@@ -1,0 +1,18 @@
+[package]
+name = "supercash"
+version = "1.0.0"
+authors = []
+upgrade_policy = "compatible"
+
+[addresses]
+supercash = "0x59fa73b80b51aab1f42b66c973419fccee430b3d0154794b929f740aca4689b0"
+
+[dev-addresses]
+supercash = "0xCAFEEEEc"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
+
+[dev-dependencies]
