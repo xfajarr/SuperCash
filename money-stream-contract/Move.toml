@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = ["Louis 232210033@student.ibik.ac.id"]
 
 [addresses]
-payroll_protocol = "0x93145d26d512e8d4e8b69fba3f62bfde2a1170b12e924f6dbb806b54fb245cd5"
+payroll_protocol = "_"
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-core.git"
