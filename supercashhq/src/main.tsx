@@ -19,7 +19,7 @@ createRoot(document.getElementById("root")!).render(
     optInWallets={SUPPORTED_WALLETS}
     autoConnect
     dappConfig={{ network: Network.TESTNET }}
-    onError={(error) => console.error("Aptos wallet error", error)}
+    onError={(error) => console.error("Aptos wallet error:", error)}
   >
     <App />
   </AptosWalletAdapterProvider>

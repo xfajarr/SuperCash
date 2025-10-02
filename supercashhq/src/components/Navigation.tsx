@@ -27,10 +27,10 @@ const Navigation = () => {
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="bg-primary text-primary-foreground p-2 rounded-xl border-2 border-foreground transition-transform group-hover:scale-105">
+            {/* <div className="bg-primary text-primary-foreground p-2 rounded-xl border-2 border-foreground transition-transform group-hover:scale-105">
               <Zap className="w-6 h-6" />
-            </div>
-            <span className="text-2xl font-bold">SuperCash</span>
+            </div> */}
+            <h1 className="text-2xl font-bold">Super<span className="text-primary">Cash</span></h1>
           </Link>
           
           <div className="hidden md:flex items-center gap-1">
