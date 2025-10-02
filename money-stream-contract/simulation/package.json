@@ -1,0 +1,20 @@
+{
+  "name": "usdc-streaming-mvp",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "ts-node usdc-streaming-mvp.ts",
+    "demo": "ts-node demo.ts",
+    "test": "ts-node test-stream.ts",
+    "generate": "ts-node generate-accounts.ts",
+    "stream": "ts-node real-stream.ts"
+  },
+  "dependencies": {
+    "@aptos-labs/ts-sdk": "^1.26.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
