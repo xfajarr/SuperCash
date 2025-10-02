@@ -263,7 +263,7 @@ module supercash::payments {
     ) acquires PaymentHubFA {
         let sender_addr = signer::address_of(sender);
         let payment_hub = borrow_global_mut<PaymentHubFA>(sender_addr);
-        let link_transfer = table::remove(&mut payment_hub.link_transfers, link_hash);
+        let link_transfer = payment_hub.link_transfers.remove(link_hash);
 
         // Deconstruct the struct to correctly handle the `resource_signer_cap` which lacks `drop` ability.
         let LinkTransferFA {

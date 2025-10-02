@@ -5,10 +5,10 @@ authors = []
 upgrade_policy = "compatible"
 
 [addresses]
-supercash = "0x504a0ae5e2d680cfd31b90a47f576088828483e1e4721efb0619ffa60ca94d61"
+supercash = "_"
 
 [dev-addresses]
-supercash = "0xCAFEEEEc"
+supercash = "0x504a0ae5e2d680cfd31b90a47f576088828483e1e4721efb0619ffa60ca94d61"
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Zap, Menu } from "lucide-react";
 import { TokenSelector } from "./TokenSelector";
 import { ThemeToggle } from "./ThemeToggle";
+import WalletConnector from "./WalletConnector";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 
@@ -14,8 +15,8 @@ const Navigation = () => {
   
   const navLinks = [
     { path: "/", label: "Home" },
-    { path: "/transfer", label: "Transfer" },
     { path: "/swap", label: "Swap" },
+    { path: "/transfer", label: "Transfer" },
     { path: "/receive", label: "Receive" },
     { path: "/streaming", label: "Streaming" },
     { path: "/cashout", label: "Cash Out" },
@@ -46,11 +47,9 @@ const Navigation = () => {
           </div>
           
           <div className="hidden md:flex items-center gap-3">
-            <TokenSelector />
+            {/* <TokenSelector /> */}
             <ThemeToggle />
-            <Button className="rounded-full font-semibold">
-              Connect Wallet
-            </Button>
+            <WalletConnector />
           </div>
 
           {/* Mobile Menu */}
@@ -75,9 +74,7 @@ const Navigation = () => {
                       </Button>
                     </Link>
                   ))}
-                  <Button className="rounded-xl font-semibold text-lg mt-4">
-                    Connect Wallet
-                  </Button>
+                  <WalletConnector fullWidth />
                 </div>
               </SheetContent>
             </Sheet>
