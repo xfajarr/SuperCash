@@ -1,0 +1,30 @@
+# Aptos
+build/
+.aptos/
+.movement/
+
+# Move
+**/*.mv
+**/*.mvcov
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Env
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keys (IMPORTANT!)
+*.key
+*.pem
+deployment-info.json
