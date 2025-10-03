@@ -3,7 +3,16 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Play, Pause, Square, Radio, Share2, Copy, ArrowRight } from "lucide-react";
+import {
+  Play,
+  Square,
+  Radio,
+  Share2,
+  Copy,
+  ArrowRight,
+  Wallet,
+  ExternalLink,
+} from "lucide-react";
 import Navigation from "@/components/Navigation";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
@@ -15,68 +24,207 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAptosWallet } from "@/hooks/useAptosWallet";
+import { streamingClient, StreamInfo } from "@/lib/streaming-client";
 
 const Streaming = () => {
+  const { connected, address, signAndSubmitTransaction } = useAptosWallet();
+
   const [recipient, setRecipient] = useState("");
-  const [flowRate, setFlowRate] = useState("");
-  const [duration, setDuration] = useState("hour");
+  const [monthlyAmount, setMonthlyAmount] = useState("");
+  const [durationMonths, setDurationMonths] = useState("1");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [totalStreamed, setTotalStreamed] = useState(0);
-  const [streamStartTime, setStreamStartTime] = useState<number | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [streamAddress, setStreamAddress] = useState<string>("");
+  const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
+  const [withdrawableAmount, setWithdrawableAmount] = useState<bigint>(
+    BigInt(0)
+  );
   const [shareLink, setShareLink] = useState("");
 
-  // Real-time streaming counter
+  // Poll for stream updates when active
   useEffect(() => {
-    if (!isStreaming || isPaused || !flowRate) return;
+    if (!isStreaming || !streamAddress) return;
 
-    const interval = setInterval(() => {
-      const rate = parseFloat(flowRate);
-      const perSecond = duration === "hour" 
-        ? rate / 3600 
-        : duration === "day" 
-        ? rate / 86400 
-        : rate / 2628000; // month
-      
-      setTotalStreamed(prev => prev + perSecond);
-    }, 1000);
+    const pollStreamInfo = async () => {
+      const info = await streamingClient.getStreamInfo(streamAddress);
+      if (info) {
+        setStreamInfo(info);
+
+        // If stream is no longer active, stop polling
+        if (!info.isActive) {
+          setIsStreaming(false);
+          toast.info("Stream has ended");
+        }
+      }
+
+      const withdrawable = await streamingClient.getWithdrawableAmount(
+        streamAddress
+      );
+      setWithdrawableAmount(withdrawable);
+    };
+
+    // Poll immediately
+    pollStreamInfo();
+
+    // Then poll every 3 seconds
+    const interval = setInterval(pollStreamInfo, 3000);
 
     return () => clearInterval(interval);
-  }, [isStreaming, isPaused, flowRate, duration]);
+  }, [isStreaming, streamAddress]);
 
-  const startStream = () => {
-    if (!recipient || !flowRate) {
+  const initializeSender = async () => {
+    if (!connected || !address) return false;
+
+    try {
+      const txPayload = streamingClient.buildInitSenderTransaction(address);
+      await signAndSubmitTransaction(txPayload);
+      return true;
+    } catch (error: any) {
+      // If already initialized, that's fine
+      if (error.message?.includes("EREGISTRY_ALREADY_EXISTS")) {
+        return true;
+      }
+      console.error("Error initializing sender:", error);
+      return false;
+    }
+  };
+
+  const startStream = async () => {
+    if (!connected || !address) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+
+    if (!recipient || !monthlyAmount) {
       toast.error("Please fill in all fields");
       return;
     }
-    setIsStreaming(true);
-    setTotalStreamed(0);
-    setStreamStartTime(Date.now());
-    
-    // Generate share link for recipient
-    const link = `supercash.app/claim-stream?rate=${flowRate}&duration=${duration}&from=${recipient.slice(0, 10)}&total=${calculateTotal()}`;
-    setShareLink(link);
-    
-    toast.success("Payment stream started!");
+
+    const amount = parseFloat(monthlyAmount);
+    if (amount <= 0 || isNaN(amount)) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      // Step 1: Initialize sender if needed
+      toast.info("Initializing sender registry...");
+      const initialized = await initializeSender();
+      if (!initialized) {
+        throw new Error("Failed to initialize sender");
+      }
+
+      // Step 2: Get stream address
+      const streamAddr = await streamingClient.getStreamAddress(
+        address,
+        recipient
+      );
+
+      // Step 3: Check if stream already exists
+      const existingInfo = await streamingClient.getStreamInfo(streamAddr);
+      if (existingInfo && existingInfo.isActive) {
+        toast.error("Active stream already exists to this recipient");
+        setIsCreating(false);
+        return;
+      }
+
+      // Step 4: Create stream transaction
+      toast.info("Creating payment stream...");
+      const duration = parseInt(durationMonths);
+      const txPayload = streamingClient.buildCreateStreamTransaction(
+        recipient,
+        amount,
+        duration
+      );
+
+      const response = await signAndSubmitTransaction(txPayload);
+      const txHash = response.hash;
+
+      toast.success("Stream created successfully!");
+
+      // Step 5: Set up stream state
+      setStreamAddress(streamAddr);
+      setIsStreaming(true);
+
+      // Generate share link
+      const link = `${
+        window.location.origin
+      }/claim-stream?stream=${streamAddr}&from=${address.slice(0, 10)}`;
+      setShareLink(link);
+
+      // Show explorer link
+      const explorerUrl = streamingClient.getExplorerUrl(txHash);
+      toast.success(
+        <div className="flex items-center gap-2">
+          <span>View on Explorer</span>
+          <ExternalLink className="w-3 h-3" />
+        </div>,
+        {
+          action: {
+            label: "Open",
+            onClick: () => window.open(explorerUrl, "_blank"),
+          },
+        }
+      );
+    } catch (error: any) {
+      console.error("Error creating stream:", error);
+
+      if (error.message?.includes("INSUFFICIENT_BALANCE")) {
+        toast.error("Insufficient USDC balance");
+      } else if (error.message?.includes("User rejected")) {
+        toast.error("Transaction cancelled");
+      } else {
+        toast.error(error.message || "Failed to create stream");
+      }
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const pauseStream = () => {
-    setIsPaused(true);
-    toast.success("Payment stream paused");
-  };
+  const stopStream = async () => {
+    if (!streamAddress || !connected) return;
 
-  const resumeStream = () => {
-    setIsPaused(false);
-    toast.success("Payment stream resumed");
-  };
+    try {
+      toast.info("Cancelling stream...");
+      const txPayload =
+        streamingClient.buildCancelStreamTransaction(streamAddress);
+      const response = await signAndSubmitTransaction(txPayload);
 
-  const stopStream = () => {
-    setIsStreaming(false);
-    setIsPaused(false);
-    setTotalStreamed(0);
-    setStreamStartTime(null);
-    setShareLink("");
-    toast.success("Payment stream stopped");
+      toast.success("Stream cancelled! Remaining funds returned.");
+
+      const explorerUrl = streamingClient.getExplorerUrl(response.hash);
+      toast.success(
+        <div className="flex items-center gap-2">
+          <span>View on Explorer</span>
+          <ExternalLink className="w-3 h-3" />
+        </div>,
+        {
+          action: {
+            label: "Open",
+            onClick: () => window.open(explorerUrl, "_blank"),
+          },
+        }
+      );
+
+      // Reset state
+      setIsStreaming(false);
+      setStreamAddress("");
+      setStreamInfo(null);
+      setWithdrawableAmount(BigInt(0));
+      setShareLink("");
+      setRecipient("");
+      setMonthlyAmount("");
+    } catch (error: any) {
+      console.error("Error cancelling stream:", error);
+      if (error.message?.includes("User rejected")) {
+        toast.error("Transaction cancelled");
+      } else {
+        toast.error("Failed to cancel stream");
+      }
+    }
   };
 
   const copyShareLink = () => {
@@ -85,24 +233,45 @@ const Streaming = () => {
   };
 
   const calculateTotal = () => {
-    if (!flowRate) return "0.00";
-    const rate = parseFloat(flowRate);
-    const multiplier = duration === "hour" ? 1 : duration === "day" ? 24 : 730;
-    return (rate * multiplier).toFixed(2);
+    if (!monthlyAmount || !durationMonths) return "0.00";
+    const amount = parseFloat(monthlyAmount);
+    const duration = parseInt(durationMonths);
+    return (amount * duration).toFixed(2);
+  };
+
+  const getStreamedPercentage = () => {
+    if (!streamInfo) return 0;
+    const total = Number(streamInfo.totalDeposited);
+    const streamed =
+      Number(withdrawableAmount) + Number(streamInfo.totalWithdrawn);
+    if (total === 0) return 0;
+    return (streamed / total) * 100;
   };
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       <Navigation />
-      
+
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-2xl mx-auto space-y-8">
           <div className="text-center space-y-4">
             <h1 className="text-4xl md:text-5xl font-bold">Money Streaming</h1>
             <p className="text-xl text-muted-foreground">
-              Stream payments continuously to anyone
+              Stream USDC continuously to anyone on Aptos
             </p>
           </div>
+
+          {!connected && (
+            <Card className="p-6 rounded-2xl border-2 border-primary bg-primary/5">
+              <div className="flex items-center gap-3 mb-4">
+                <Wallet className="w-6 h-6 text-primary" />
+                <h3 className="font-bold text-lg">Wallet Required</h3>
+              </div>
+              <p className="text-muted-foreground">
+                Connect your wallet to create and manage payment streams
+              </p>
+            </Card>
+          )}
 
           <Card className="p-6 space-y-6 rounded-2xl border-2">
             <div className="flex items-center gap-3">
@@ -114,184 +283,228 @@ const Streaming = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Recipient Address</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Recipient Address
+                </label>
                 <Input
                   placeholder="0x..."
                   value={recipient}
                   onChange={(e) => setRecipient(e.target.value)}
                   className="rounded-xl border-2"
-                  disabled={isStreaming}
+                  disabled={isStreaming || !connected}
                 />
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Flow Rate</label>
-                <div className="flex gap-3">
-                  <Input
-                    type="number"
-                    placeholder="0.00"
-                    value={flowRate}
-                    onChange={(e) => setFlowRate(e.target.value)}
-                    className="text-xl font-bold rounded-xl border-2 flex-1"
-                    disabled={isStreaming}
-                  />
-                  <Select value={duration} onValueChange={setDuration} disabled={isStreaming}>
-                    <SelectTrigger className="w-[120px] rounded-xl border-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl border-2">
-                      <SelectItem value="hour" className="rounded-lg">per Hour</SelectItem>
-                      <SelectItem value="day" className="rounded-lg">per Day</SelectItem>
-                      <SelectItem value="month" className="rounded-lg">per Month</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <label className="text-sm font-medium mb-2 block">
+                  Monthly Amount (USDC)
+                </label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={monthlyAmount}
+                  onChange={(e) => setMonthlyAmount(e.target.value)}
+                  className="text-xl font-bold rounded-xl border-2"
+                  disabled={isStreaming || !connected}
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Duration (Months)
+                </label>
+                <Select
+                  value={durationMonths}
+                  onValueChange={setDurationMonths}
+                  disabled={isStreaming || !connected}>
+                  <SelectTrigger className="rounded-xl border-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border-2">
+                    <SelectItem value="1" className="rounded-lg">
+                      1 Month
+                    </SelectItem>
+                    <SelectItem value="3" className="rounded-lg">
+                      3 Months
+                    </SelectItem>
+                    <SelectItem value="6" className="rounded-lg">
+                      6 Months
+                    </SelectItem>
+                    <SelectItem value="12" className="rounded-lg">
+                      12 Months
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {isStreaming ? (
-                <div className="flex gap-3">
-                  {isPaused ? (
-                    <Button 
-                      onClick={resumeStream}
-                      className="flex-1 rounded-xl font-bold text-lg py-6"
-                    >
-                      <Play className="w-5 h-5 mr-2" />
-                      Resume
-                    </Button>
-                  ) : (
-                    <Button 
-                      onClick={pauseStream}
-                      variant="secondary"
-                      className="flex-1 rounded-xl font-bold text-lg py-6"
-                    >
-                      <Pause className="w-5 h-5 mr-2" />
-                      Pause
-                    </Button>
-                  )}
-                  <Button 
-                    onClick={stopStream}
-                    variant="destructive"
-                    className="flex-1 rounded-xl font-bold text-lg py-6"
-                  >
-                    <Square className="w-5 h-5 mr-2" />
-                    Stop
-                  </Button>
-                </div>
+                <Button
+                  onClick={stopStream}
+                  variant="destructive"
+                  className="w-full rounded-xl font-bold text-lg py-6">
+                  <Square className="w-5 h-5 mr-2" />
+                  Cancel Stream
+                </Button>
               ) : (
-                <Button 
+                <Button
                   onClick={startStream}
-                  className="w-full rounded-xl font-bold text-lg py-6"
-                >
+                  disabled={!connected || isCreating}
+                  className="w-full rounded-xl font-bold text-lg py-6">
                   <Play className="w-5 h-5 mr-2" />
-                  Start Stream
+                  {isCreating ? "Creating Stream..." : "Start Stream"}
                 </Button>
               )}
             </div>
 
             <div className="pt-4 border-t border-border space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Estimated Monthly Cost</span>
-                <span className="font-bold text-xl">{calculateTotal()} USDC</span>
+                <span className="text-muted-foreground">
+                  Total Stream Value
+                </span>
+                <span className="font-bold text-xl">
+                  {calculateTotal()} USDC
+                </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Network Fee</span>
-                <span className="font-bold text-primary">$0.00</span>
+                <span className="text-muted-foreground">Network</span>
+                <span className="font-bold text-primary">Aptos Testnet</span>
               </div>
             </div>
           </Card>
 
-          {/* Active Streams */}
+          {/* Active Stream Display */}
           <div className="space-y-4">
-            <h3 className="text-2xl font-bold">Active Streams</h3>
+            <h3 className="text-2xl font-bold">Active Stream</h3>
             {!isStreaming ? (
               <Card className="p-8 rounded-2xl border-2 text-center">
-                <p className="text-muted-foreground">No active streams</p>
+                <p className="text-muted-foreground">No active stream</p>
               </Card>
             ) : (
               <Card className="p-6 rounded-2xl border-2 border-primary bg-primary/5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${isPaused ? 'bg-yellow-500' : 'bg-green-500 animate-pulse'}`} />
-                    <span className="font-bold">{isPaused ? 'Paused' : 'Live Stream'}</span>
+                    <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
+                    <span className="font-bold">Live Stream</span>
                   </div>
-                  <div className="flex gap-2">
-                    {isPaused ? (
-                      <Button 
-                        onClick={resumeStream}
-                        size="sm"
-                        className="rounded-lg"
-                      >
-                        <Play className="w-4 h-4 mr-1" />
-                        Resume
-                      </Button>
-                    ) : (
-                      <Button 
-                        onClick={pauseStream}
-                        size="sm"
-                        variant="secondary"
-                        className="rounded-lg"
-                      >
-                        <Pause className="w-4 h-4 mr-1" />
-                        Pause
-                      </Button>
-                    )}
-                    <Button 
-                      onClick={stopStream}
-                      size="sm"
-                      variant="destructive"
-                      className="rounded-lg"
-                    >
-                      <Square className="w-4 h-4 mr-1" />
-                      Stop
-                    </Button>
-                  </div>
+                  <Button
+                    onClick={stopStream}
+                    size="sm"
+                    variant="destructive"
+                    className="rounded-lg">
+                    <Square className="w-4 h-4 mr-1" />
+                    Cancel
+                  </Button>
                 </div>
-                
+
                 <div className="space-y-4">
                   {/* Real-time streaming amount */}
                   <div className="p-4 bg-background rounded-xl border-2 border-border text-center">
-                    <p className="text-sm text-muted-foreground mb-1">Total Streamed</p>
+                    <p className="text-sm text-muted-foreground mb-1">
+                      Available to Recipient
+                    </p>
                     <p className="text-3xl font-bold text-primary">
-                      {totalStreamed.toFixed(6)} USDC
+                      {streamingClient.formatUSDC(withdrawableAmount)} USDC
                     </p>
                   </div>
 
                   {/* Progress bar */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Progress</span>
-                      <span>{((totalStreamed / parseFloat(calculateTotal())) * 100).toFixed(1)}% of monthly estimate</span>
+                  {streamInfo && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Stream Progress</span>
+                        <span>{getStreamedPercentage().toFixed(1)}%</span>
+                      </div>
+                      <Progress
+                        value={getStreamedPercentage()}
+                        className="h-2"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>0 USDC</span>
+                        <span>
+                          {streamingClient.formatUSDC(
+                            streamInfo.totalDeposited
+                          )}{" "}
+                          USDC
+                        </span>
+                      </div>
                     </div>
-                    <Progress 
-                      value={(totalStreamed / parseFloat(calculateTotal())) * 100} 
-                      className="h-2"
-                    />
-                  </div>
+                  )}
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">To</span>
-                      <code className="text-xs">{recipient.slice(0, 10)}...{recipient.slice(-8)}</code>
+                  {streamInfo && (
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="p-3 bg-background rounded-xl border">
+                        <p className="text-muted-foreground text-xs mb-1">To</p>
+                        <p className="font-mono text-xs font-bold break-all">
+                          {streamInfo.recipient.slice(0, 10)}...
+                          {streamInfo.recipient.slice(-8)}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-background rounded-xl border">
+                        <p className="text-muted-foreground text-xs mb-1">
+                          Rate/Second
+                        </p>
+                        <p className="font-bold">
+                          {(
+                            Number(streamInfo.ratePerSecond) / 1_000_000
+                          ).toFixed(6)}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-background rounded-xl border">
+                        <p className="text-muted-foreground text-xs mb-1">
+                          Total Withdrawn
+                        </p>
+                        <p className="font-bold">
+                          {streamingClient.formatUSDC(
+                            streamInfo.totalWithdrawn
+                          )}{" "}
+                          USDC
+                        </p>
+                      </div>
+                      <div className="p-3 bg-background rounded-xl border">
+                        <p className="text-muted-foreground text-xs mb-1">
+                          Remaining
+                        </p>
+                        <p className="font-bold">
+                          {streamingClient.formatUSDC(streamInfo.balance)} USDC
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Rate</span>
-                      <span className="font-bold">{flowRate} USDC/{duration}</span>
+                  )}
+
+                  {streamInfo && (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Started</span>
+                        <span className="font-medium">
+                          {new Date(
+                            streamInfo.startTime * 1000
+                          ).toLocaleString()}
+                        </span>
+                      </div>
+                      {streamInfo.endTime > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Ends</span>
+                          <span className="font-medium">
+                            {new Date(
+                              streamInfo.endTime * 1000
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Status</span>
-                      <span className={`font-bold ${isPaused ? 'text-yellow-500' : 'text-green-500'}`}>
-                        {isPaused ? 'Paused' : 'Streaming'}
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Share link for recipient */}
                 {shareLink && (
-                  <div className="p-4 bg-background rounded-xl border-2 border-primary space-y-3">
+                  <div className="p-4 bg-background rounded-xl border-2 border-primary space-y-3 mt-4">
                     <div className="flex items-center gap-2">
                       <Share2 className="w-4 h-4 text-primary" />
-                      <p className="text-sm font-medium">Share with recipient:</p>
+                      <p className="text-sm font-medium">
+                        Share with recipient:
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-xs bg-secondary p-2 rounded-lg border break-all">
@@ -301,8 +514,7 @@ const Streaming = () => {
                         size="icon"
                         variant="ghost"
                         onClick={copyShareLink}
-                        className="rounded-lg flex-shrink-0"
-                      >
+                        className="rounded-lg flex-shrink-0">
                         <Copy className="w-4 h-4" />
                       </Button>
                     </div>
@@ -317,17 +529,23 @@ const Streaming = () => {
             <Card className="p-4 rounded-xl border-2 text-center">
               <div className="text-2xl mb-2">💼</div>
               <h4 className="font-bold mb-1">Salaries</h4>
-              <p className="text-xs text-muted-foreground">Pay employees by the second</p>
+              <p className="text-xs text-muted-foreground">
+                Pay employees by the second
+              </p>
             </Card>
             <Card className="p-4 rounded-xl border-2 text-center">
               <div className="text-2xl mb-2">📱</div>
               <h4 className="font-bold mb-1">Subscriptions</h4>
-              <p className="text-xs text-muted-foreground">Continuous service payments</p>
+              <p className="text-xs text-muted-foreground">
+                Continuous service payments
+              </p>
             </Card>
             <Card className="p-4 rounded-xl border-2 text-center">
               <div className="text-2xl mb-2">🎮</div>
               <h4 className="font-bold mb-1">Gaming</h4>
-              <p className="text-xs text-muted-foreground">Pay as you play models</p>
+              <p className="text-xs text-muted-foreground">
+                Pay as you play models
+              </p>
             </Card>
           </div>
 
@@ -335,7 +553,9 @@ const Streaming = () => {
           <div className="p-6 rounded-2xl bg-primary/10 border-2 border-primary">
             <h3 className="font-bold text-lg mb-2">🌊 Real-Time Money Flow</h3>
             <p className="text-muted-foreground">
-              Money streaming enables continuous payment flows on Aptos. Recipients see funds accumulate in real-time, every second.
+              Money streaming enables continuous payment flows on Aptos.
+              Recipients see funds accumulate in real-time, every second. Built
+              on LayerZero USDC for maximum compatibility.
             </p>
           </div>
 
@@ -343,7 +563,8 @@ const Streaming = () => {
           <Card className="p-6 rounded-2xl border-2 border-primary bg-gradient-to-br from-primary/5 to-primary/10">
             <h3 className="font-bold text-lg mb-2">🎬 Try Demo Stream</h3>
             <p className="text-muted-foreground mb-4">
-              Experience receiving a money stream in real-time. Click below to see how it works!
+              Experience receiving a money stream in real-time. Click below to
+              see how it works!
             </p>
             <Link to="/claim-stream?rate=100&duration=hour&from=0xdemo&total=2400">
               <Button className="w-full rounded-xl font-bold">
@@ -354,7 +575,7 @@ const Streaming = () => {
           </Card>
         </div>
       </div>
-      
+
       <BottomNav />
     </div>
   );
