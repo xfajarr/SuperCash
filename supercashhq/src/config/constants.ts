@@ -1,4 +1,5 @@
-export const CONTRACT_ADDRESS = "0xe012406f23b3c3101a8c3d506e8b6df0e6d69598a526e78827be2d42e5d10dc9";
+export const CONTRACT_ADDRESS = "0x504a0ae5e2d680cfd31b90a47f576088828483e1e4721efb0619ffa60ca94d61";
+export const MONEY_STREAM_CONTRACT_ADDRESS = "0x504a0ae5e2d680cfd31b90a47f576088828483e1e4721efb0619ffa60ca94d61";
 
 export const NETWORKS = {
   mainnet: {
@@ -16,15 +17,57 @@ export const NETWORKS = {
 export const TOKENS = {
   mainnet: {
     APT: { type: "0x1::aptos_coin::AptosCoin", decimals: 8, name: "Aptos", icon: "/Aptos_mark_BLK.svg" },
-    USDC: { type: "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b::asset::USDC", decimals: 6, name: "USD Coin", tokenSymbol: "USDC", icon: "/usd-coin-usdc-logo.svg" },
-    USDT: { type: "0xd5d0d561493ea2b9410f67da804653ae44e793c2423707d4f11edb2e38192050::usdt::usdt", decimals: 6, name: "Tether USD", tokenSymbol: "USDT", icon: "/usdt_logo.svg" },
-    PYUSD: { type: "0x0::asset::PYUSD", decimals: 6, name: "PayPal USD", tokenSymbol: "PYUSD", icon: "/paypal-usd-pyusd-logo.svg" },
+    USDC: {
+      type: "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b::stablecoin::stablecoin",
+      decimals: 6,
+      name: "USD Coin",
+      tokenSymbol: "USDC",
+      icon: "/usd-coin-usdc-logo.svg",
+      metadataAddress: "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+    },
+    USDT: {
+      type: "0xd5d0d561493ea2b9410f67da804653ae44e793c2423707d4f11edb2e38192050::usdt::usdt",
+      decimals: 6,
+      name: "Tether USD",
+      tokenSymbol: "USDT",
+      icon: "/usdt_logo.svg",
+      metadataAddress: "0xd5d0d561493ea2b9410f67da804653ae44e793c2423707d4f11edb2e38192050"
+    },
+    PYUSD: {
+      type: "0x0::asset::PYUSD",
+      decimals: 6,
+      name: "PayPal USD",
+      tokenSymbol: "PYUSD",
+      icon: "/paypal-usd-pyusd-logo.svg",
+      metadataAddress: "0x0"
+    },
   },
   testnet: {
     APT: { type: "0x1::aptos_coin::AptosCoin", decimals: 8, name: "Aptos", icon: "/Aptos_mark_BLK.svg" },
-    USDC: { type: "0xe012406f23b3c3101a8c3d506e8b6df0e6d69598a526e78827be2d42e5d10dc9::mock_usdc::MockUSDCToken", decimals: 6, name: "USD Coin", tokenSymbol: "USDC", icon: "/usd-coin-usdc-logo.svg" },
-    USDT: { type: "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b::asset::USDt", decimals: 6, name: "Tether USD", tokenSymbol: "USDT", icon: "/usdt_logo.svg" },
-    PYUSD: { type: "0x0::asset::PYUSD", decimals: 6, name: "PayPal USD", tokenSymbol: "PYUSD", icon: "/paypal-usd-pyusd-logo.svg" },
+    USDC: {
+      type: "address_USDC_TESTNET::stablecoin::stablecoin",
+      decimals: 6,
+      name: "USD Coin",
+      tokenSymbol: "USDC",
+      icon: "/usd-coin-usdc-logo.svg",
+      metadataAddress: "address_USDC_TESTNET"
+    },
+    USDT: {
+      type: "0xd5d0d561493ea2b9410f67da804653ae44e793c2423707d4f11edb2e38192050::usdt::usdt",
+      decimals: 6,
+      name: "Tether USD",
+      tokenSymbol: "USDT",
+      icon: "/usdt_logo.svg",
+      metadataAddress: "0xd5d0d561493ea2b9410f67da804653ae44e793c2423707d4f11edb2e38192050"
+    },
+    PYUSD: {
+      type: "0x0::asset::PYUSD",
+      decimals: 6,
+      name: "PayPal USD",
+      tokenSymbol: "PYUSD",
+      icon: "/paypal-usd-pyusd-logo.svg",
+      metadataAddress: "0x0"
+    },
   },
 };
 

@@ -52,14 +52,12 @@ const TransferPage = () => {
     );
     const { secret, hash } = await generateSecretAndHash();
 
-    const metadataAddress = tokenInfo.type.split("::")[0];
-
     const payload =
       selectedToken === "APT"
         ? getCreateLinkCoinPayload(amountInSmallestUnit, hash, 86400, tokens.APT.type)
         : getCreateLinkFungibleAssetPayload(
             selectedToken,
-            metadataAddress,
+            tokenInfo.metadataAddress,
             amountInSmallestUnit,
             hash
           );
@@ -106,15 +104,13 @@ const TransferPage = () => {
       tokenInfo.decimals
     );
 
-    const metadataAddress = tokenInfo.type.split("::")[0];
-
     const payload =
       selectedToken === "APT"
         ? getInstantTransferCoinPayload(recipient, amountInSmallestUnit, tokens.APT.type)
         : getInstantTransferFungibleAssetPayload(
-            selectedToken,
-            metadataAddress,
+            tokenInfo.type,
             recipient,
+            tokenInfo.metadataAddress,
             amountInSmallestUnit
           );
 

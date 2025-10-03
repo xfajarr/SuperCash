@@ -10,7 +10,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Navigation from "@/components/Navigation";
@@ -62,17 +62,15 @@ const TransferPage = () => {
     );
     const { secret, hash } = await generateSecretAndHash();
 
-    const metadataAddress = tokenInfo.type.split("::")[0];
-
     const payload =
       selectedToken === "APT"
         ? getCreateLinkCoinPayload(amountInSmallestUnit, hash, 86400, tokens.APT.type)
         : getCreateLinkFungibleAssetPayload(
-            selectedToken,
-            metadataAddress,
-            amountInSmallestUnit,
-            hash
-          );
+          selectedToken,
+          tokenInfo.metadataAddress,
+          amountInSmallestUnit,
+          hash
+        );
 
     const aptosNetwork = (network === "mainnet") ? Network.MAINNET : Network.TESTNET;
     const aptos = new Aptos(new AptosConfig({ network: aptosNetwork }));
@@ -93,7 +91,7 @@ const TransferPage = () => {
       setGeneratedLink(link);
       setLastLinkHash(hash);
       setAmount("");
-      
+
       // Wait for transaction to be confirmed before refreshing links
       try {
         const txHash = (result.response as any)?.hash;
@@ -127,10 +125,17 @@ const TransferPage = () => {
       setGeneratedLink("");
       setLastLinkHash(null);
       loadMyLinks();
-      try { const txHash = (result.response as any)?.hash; if (txHash) { await aptos.waitForTransaction({ transactionHash: txHash }); } } catch {}
+      try {
+        const aptosNetwork = (network === "mainnet") ? Network.MAINNET : Network.TESTNET;
+        const aptos = new Aptos(new AptosConfig({ network: aptosNetwork }));
+        const txHash = (result.response as any)?.hash;
+        if (txHash) {
+          await aptos.waitForTransaction({ transactionHash: txHash });
+        }
+      } catch (e) {
+        console.error("Error waiting for transaction confirmation:", e);
+      }
     }
-    window.clearInterval(_int);
-    setDirectTimerMs(performance.now() - t0);
     setIsWaitingDirect(false);
   };
 
@@ -145,17 +150,20 @@ const TransferPage = () => {
       tokenInfo.decimals
     );
 
-    const metadataAddress = tokenInfo.type.split("::")[0];
+    if (!account?.address) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
 
     const payload =
       selectedToken === "APT"
         ? getInstantTransferCoinPayload(recipient, amountInSmallestUnit, tokens.APT.type)
         : getInstantTransferFungibleAssetPayload(
-            selectedToken,
-            metadataAddress,
-            recipient,
-            amountInSmallestUnit
-          );
+          tokenInfo.type,
+          recipient,
+          tokenInfo.metadataAddress,
+          amountInSmallestUnit
+        );
 
     const aptosNetwork = (network === "mainnet") ? Network.MAINNET : Network.TESTNET;
     const aptos = new Aptos(new AptosConfig({ network: aptosNetwork }));
@@ -172,7 +180,7 @@ const TransferPage = () => {
     if (result.success) {
       setAmount("");
       setRecipient("");
-      try { const txHash = (result.response as any)?.hash; if (txHash) { await aptos.waitForTransaction({ transactionHash: txHash }); } } catch {}
+      try { const txHash = (result.response as any)?.hash; if (txHash) { await aptos.waitForTransaction({ transactionHash: txHash }); } } catch { }
     }
     window.clearInterval(_int);
     setDirectTimerMs(performance.now() - t0);
@@ -221,8 +229,8 @@ const TransferPage = () => {
           const status = claimedSet.has(hashHex)
             ? 'Claimed'
             : Date.now() / 1000 > expires_at
-            ? 'Expired'
-            : 'Active';
+              ? 'Expired'
+              : 'Active';
           links.push({
             hashHex,
             token: 'APT',
@@ -262,8 +270,8 @@ const TransferPage = () => {
           const status = claimedSetFA.has(hashHex)
             ? 'Claimed'
             : Date.now() / 1000 > expires_at
-            ? 'Expired'
-            : 'Active';
+              ? 'Expired'
+              : 'Active';
           links.push({
             hashHex,
             token: symbol,
@@ -299,7 +307,7 @@ const TransferPage = () => {
           <div className="text-center space-y-4">
             <h1 className="text-4xl md:text-5xl font-bold">Send Money</h1>
             <p className="text-xl text-muted-foreground">
-              Transfer funds instantly accross Country and Chain
+              Transfer funds instantly accross Chain and Country
             </p>
           </div>
 
@@ -501,7 +509,7 @@ const TransferPage = () => {
                           <div>
                             <div className="text-sm text-muted-foreground">{l.token}</div>
                             <div className="font-bold">{l.amountDisplay} {l.token}</div>
-                            <div className="text-xs text-muted-foreground">Hash: {l.hashHex.slice(0,10)}�{l.hashHex.slice(-8)}</div>
+                            <div className="text-xs text-muted-foreground">Hash: {l.hashHex.slice(0, 10)}�{l.hashHex.slice(-8)}</div>
                           </div>
                           <div className="text-right flex items-center gap-3">
                             <span className={l.status === 'Claimed' ? 'text-green-600 text-sm' : (l.status === 'Expired' ? 'text-red-600 text-sm' : 'text-amber-600 text-sm')}>{l.status}</span>

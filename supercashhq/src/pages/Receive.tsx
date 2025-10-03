@@ -38,7 +38,7 @@ const Receive = () => {
   }, [account?.address]);
   
   const paymentLink = useMemo(() => {
-    return walletAddress ? `supercash.app/pay/${walletAddress}${amount ? `?amount=${amount}&token=${selectedToken}` : ''}` : "";
+    return walletAddress ? `supercash.money/pay/${walletAddress}${amount ? `?amount=${amount}&token=${selectedToken}` : ''}` : "";
   }, [walletAddress, amount, selectedToken]);
   
   const copyAddress = () => {

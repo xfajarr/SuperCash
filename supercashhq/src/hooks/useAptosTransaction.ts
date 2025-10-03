@@ -4,8 +4,8 @@ import { toast } from "sonner";
 
 interface TransactionPayload {
     function: string;
-    typeArguments?: any[];
-    functionArguments: any[];
+    typeArguments?: string[];
+    functionArguments: (string | number | boolean)[];
 }
 
 export const useAptosTransaction = () => {
@@ -29,8 +29,6 @@ export const useAptosTransaction = () => {
         sender: account.address,
         data: payload,
       });
-      // Optional: Wait for the transaction to be confirmed
-      // await aptos.waitForTransaction({ transactionHash: response.hash });
       toast.success(options.successMessage, { id: toastId });
       return { success: true, response };
     } catch (error) {
