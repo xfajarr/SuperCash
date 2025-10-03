@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Zap, Menu } from "lucide-react";
 import { TokenSelector } from "./TokenSelector";
 import { ThemeToggle } from "./ThemeToggle";
+import { NetworkSwitcher } from "./NetworkSwitcher";
 import WalletConnector from "./WalletConnector";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -10,9 +11,9 @@ import { useState } from "react";
 const Navigation = () => {
   const location = useLocation();
   const [open, setOpen] = useState(false);
-  
+
   const isActive = (path: string) => location.pathname === path;
-  
+
   const navLinks = [
     { path: "/", label: "Home" },
     { path: "/swap", label: "Swap" },
@@ -21,7 +22,7 @@ const Navigation = () => {
     { path: "/streaming", label: "Streaming" },
     { path: "/cashout", label: "Cash Out" },
   ];
-  
+
   return (
     <nav className="border-b border-border bg-background sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4">
@@ -32,12 +33,12 @@ const Navigation = () => {
             </div> */}
             <h1 className="text-2xl font-bold">Super<span className="text-primary">Cash</span></h1>
           </Link>
-          
+
           <div className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => (
               <Link key={link.path} to={link.path}>
-                <Button 
-                  variant={isActive(link.path) ? "default" : "ghost"} 
+                <Button
+                  variant={isActive(link.path) ? "default" : "ghost"}
                   className="rounded-full"
                 >
                   {link.label}
@@ -45,8 +46,9 @@ const Navigation = () => {
               </Link>
             ))}
           </div>
-          
+
           <div className="hidden md:flex items-center gap-3">
+            <NetworkSwitcher />
             {/* <TokenSelector /> */}
             <ThemeToggle />
             <WalletConnector />
@@ -54,7 +56,8 @@ const Navigation = () => {
 
           {/* Mobile Menu */}
           <div className="flex md:hidden items-center gap-2">
-            <TokenSelector />
+            <NetworkSwitcher />
+            {/* <TokenSelector /> */}
             <ThemeToggle />
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
@@ -66,8 +69,8 @@ const Navigation = () => {
                 <div className="flex flex-col gap-4 mt-8">
                   {navLinks.map((link) => (
                     <Link key={link.path} to={link.path} onClick={() => setOpen(false)}>
-                      <Button 
-                        variant={isActive(link.path) ? "default" : "ghost"} 
+                      <Button
+                        variant={isActive(link.path) ? "default" : "ghost"}
                         className="w-full justify-start rounded-xl text-lg"
                       >
                         {link.label}

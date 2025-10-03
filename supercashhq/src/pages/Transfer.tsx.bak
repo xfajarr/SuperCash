@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Navigation from "@/components/Navigation";
 import BottomNav from "@/components/BottomNav";
-import { Hex, Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
+import { Hex } from "@aptos-labs/ts-sdk";
 import { generateSecretAndHash, convertToSmallestUnit } from "@/utils/helpers";
-import { CONTRACT_ADDRESS } from "@/config/constants";
 import { useAptosTokens } from "@/hooks/useAptosTokens";
 import { useTokenList } from "@/hooks/useTokenList";
 import {
@@ -29,26 +28,17 @@ import {
   getCancelLinkFungibleAssetPayload,
 } from "@/services/aptosService";
 import { useAptosTransaction } from "@/hooks/useAptosTransaction";
-import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { useNetwork } from "@/contexts/NetworkContext";
-
 
 const TransferPage = () => {
+  const tokens = useAptosTokens();
+  const tokenList = useTokenList();
+
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
   const [selectedToken, setSelectedToken] = useState("USDC");
   const [lastLinkHash, setLastLinkHash] = useState<Uint8Array | null>(null);
   const { executeTransaction, isSubmitting, account } = useAptosTransaction();
-  const { account: walletAccount } = useWallet();
-  const { network } = useNetwork();
-  const tokens = useAptosTokens();
-  const tokenList = useTokenList();
-
-  const [directTimerMs, setDirectTimerMs] = useState<number | null>(null);
-  const [linkTimerMs, setLinkTimerMs] = useState<number | null>(null);
-  const [isWaitingDirect, setIsWaitingDirect] = useState(false);
-  const [isWaitingLink, setIsWaitingLink] = useState(false);
 
   const handleGenerateLink = async () => {
     if (!amount) {
@@ -74,13 +64,6 @@ const TransferPage = () => {
             hash
           );
 
-    const aptosNetwork = (network === "mainnet") ? Network.MAINNET : Network.TESTNET;
-    const aptos = new Aptos(new AptosConfig({ network: aptosNetwork }));
-
-    setIsWaitingLink(true);
-    const t0l = performance.now();
-    const _intl = window.setInterval(() => setLinkTimerMs(performance.now() - t0l), 16);
-
     const result = await executeTransaction(payload, {
       successMessage: "Payment link created successfully!",
       errorMessage: "Failed to create payment link",
@@ -93,24 +76,7 @@ const TransferPage = () => {
       setGeneratedLink(link);
       setLastLinkHash(hash);
       setAmount("");
-      
-      // Wait for transaction to be confirmed before refreshing links
-      try {
-        const txHash = (result.response as any)?.hash;
-        if (txHash) {
-          await aptos.waitForTransaction({ transactionHash: txHash });
-          // Refresh my links after transaction is confirmed
-          loadMyLinks();
-        }
-      } catch (e) {
-        console.error("Error waiting for transaction confirmation:", e);
-        // Still try to refresh links even if confirmation fails
-        loadMyLinks();
-      }
     }
-    window.clearInterval(_intl);
-    setLinkTimerMs(performance.now() - t0l);
-    setIsWaitingLink(false);
   };
 
   const handleCancelLink = async () => {
@@ -126,12 +92,7 @@ const TransferPage = () => {
     if (result.success) {
       setGeneratedLink("");
       setLastLinkHash(null);
-      loadMyLinks();
-      try { const txHash = (result.response as any)?.hash; if (txHash) { await aptos.waitForTransaction({ transactionHash: txHash }); } } catch {}
     }
-    window.clearInterval(_int);
-    setDirectTimerMs(performance.now() - t0);
-    setIsWaitingDirect(false);
   };
 
   const handleDirectTransfer = async () => {
@@ -157,13 +118,6 @@ const TransferPage = () => {
             amountInSmallestUnit
           );
 
-    const aptosNetwork = (network === "mainnet") ? Network.MAINNET : Network.TESTNET;
-    const aptos = new Aptos(new AptosConfig({ network: aptosNetwork }));
-
-    setIsWaitingDirect(true);
-    const t0 = performance.now();
-    const _int = window.setInterval(() => setDirectTimerMs(performance.now() - t0), 16);
-
     const result = await executeTransaction(payload, {
       successMessage: "Transfer complete!",
       errorMessage: "Failed to complete transfer",
@@ -172,11 +126,7 @@ const TransferPage = () => {
     if (result.success) {
       setAmount("");
       setRecipient("");
-      try { const txHash = (result.response as any)?.hash; if (txHash) { await aptos.waitForTransaction({ transactionHash: txHash }); } } catch {}
     }
-    window.clearInterval(_int);
-    setDirectTimerMs(performance.now() - t0);
-    setIsWaitingDirect(false);
   };
 
   const copyLink = () => {
@@ -193,104 +143,6 @@ const TransferPage = () => {
     document.body.removeChild(textArea);
   };
 
-  // My Links state and loader
-  const [myLinks, setMyLinks] = useState<any[]>([]);
-  const [loadingLinks, setLoadingLinks] = useState(false);
-  async function loadMyLinks() {
-    if (!walletAccount?.address) return;
-    setLoadingLinks(true);
-    try {
-      const aptosNetwork = (network === "mainnet") ? Network.MAINNET : Network.TESTNET;
-      const aptos = new Aptos(new AptosConfig({ network: aptosNetwork }));
-      const addr = walletAccount.address.toString();
-      const links: any[] = [];
-
-      // Coin hub (APT)
-      try {
-        const coinResourceType = `${tokens.APT.type}`;
-        const hubCoin = `${CONTRACT_ADDRESS}::payments::PaymentHubCoin<${coinResourceType}>`;
-        // Fetch events
-        const created = (await (aptos as any).getEventsByEventHandle({ accountAddress: addr, eventHandleStruct: hubCoin, fieldName: 'link_created_events' })) as any[];
-        const claimed = (await (aptos as any).getEventsByEventHandle({ accountAddress: addr, eventHandleStruct: hubCoin, fieldName: 'link_claimed_events' })) as any[];
-        const claimedSet = new Set(claimed.map((e) => (e.data.link_hash as string).toLowerCase()));
-        for (const ev of created) {
-          const data = ev.data as any;
-          const hashHex = (data.link_hash as string).toLowerCase();
-          const amt = Number(data.amount);
-          const expires_at = Number(data.expires_at);
-          const status = claimedSet.has(hashHex)
-            ? 'Claimed'
-            : Date.now() / 1000 > expires_at
-            ? 'Expired'
-            : 'Active';
-          links.push({
-            hashHex,
-            token: 'APT',
-            amountDisplay: (amt / Math.pow(10, tokens.APT.decimals)).toFixed(tokens.APT.decimals),
-            expires_at,
-            status,
-            isFA: false,
-          });
-        }
-      } catch {
-        // Ignore coin hub errors
-      }
-
-      // FA hub (USDC/USDT/PYUSD)
-      try {
-        const hubFA = `${CONTRACT_ADDRESS}::payments::PaymentHubFA`;
-        const createdFA = (await (aptos as any).getEventsByEventHandle({ accountAddress: addr, eventHandleStruct: hubFA, fieldName: 'link_created_events' })) as any[];
-        const claimedFA = (await (aptos as any).getEventsByEventHandle({ accountAddress: addr, eventHandleStruct: hubFA, fieldName: 'link_claimed_events' })) as any[];
-        const claimedSetFA = new Set(claimedFA.map((e) => (e.data.link_hash as string).toLowerCase()));
-        for (const ev of createdFA) {
-          const data = ev.data as any;
-          const hashHex = (data.link_hash as string).toLowerCase();
-          const amt = Number(data.amount);
-          const expires_at = Number(data.expires_at);
-          // Determine symbol by asset_type contents
-          let symbol = 'FA';
-          const assetType = (data.asset_type as string).toLowerCase();
-          for (const key of Object.keys(tokens)) {
-            if (key === 'APT') continue;
-            const addr0 = tokens[key].type.split('::')[0].toLowerCase();
-            if (assetType.includes(addr0)) {
-              symbol = key;
-              break;
-            }
-          }
-          const decimals = symbol !== 'FA' ? tokens[symbol].decimals : 6;
-          const status = claimedSetFA.has(hashHex)
-            ? 'Claimed'
-            : Date.now() / 1000 > expires_at
-            ? 'Expired'
-            : 'Active';
-          links.push({
-            hashHex,
-            token: symbol,
-            amountDisplay: (amt / Math.pow(10, decimals)).toFixed(decimals),
-            expires_at,
-            status,
-            isFA: true,
-          });
-        }
-      } catch {
-        // Ignore FA hub errors
-      }
-
-      links.sort((a, b) => b.expires_at - a.expires_at);
-      setMyLinks(links);
-    } catch (e) {
-      console.error('Failed to load links', e);
-    } finally {
-      setLoadingLinks(false);
-    }
-  }
-
-  useEffect(() => {
-    loadMyLinks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletAccount?.address, network]);
-
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       <Navigation />
@@ -299,20 +151,17 @@ const TransferPage = () => {
           <div className="text-center space-y-4">
             <h1 className="text-4xl md:text-5xl font-bold">Send Money</h1>
             <p className="text-xl text-muted-foreground">
-              Transfer funds instantly accross Country and Chain
+              Transfer dana instan bebas biaya
             </p>
           </div>
 
           <Tabs defaultValue="direct" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 rounded-xl p-1 bg-muted">
+            <TabsList className="grid w-full grid-cols-2 rounded-xl p-1 bg-muted">
               <TabsTrigger value="direct" className="rounded-lg">
                 Direct Transfer
               </TabsTrigger>
               <TabsTrigger value="link" className="rounded-lg">
                 Link Transfer
-              </TabsTrigger>
-              <TabsTrigger value="my_links" className="rounded-lg">
-                My Links
               </TabsTrigger>
             </TabsList>
 
@@ -478,53 +327,6 @@ const TransferPage = () => {
                     </div>
                   )}
                 </div>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="my_links" className="space-y-6">
-              <Card className="p-6 space-y-4 rounded-2xl border-2">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold">My Links</h2>
-                  <Button variant="outline" onClick={loadMyLinks} className="rounded-xl">
-                    Reload
-                  </Button>
-                </div>
-                {loadingLinks ? (
-                  <div className="p-8 text-center text-muted-foreground">Loading�</div>
-                ) : myLinks.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">No links found</div>
-                ) : (
-                  <div className="space-y-3">
-                    {myLinks.map((l, idx) => (
-                      <Card key={idx} className="p-4 rounded-xl border">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-sm text-muted-foreground">{l.token}</div>
-                            <div className="font-bold">{l.amountDisplay} {l.token}</div>
-                            <div className="text-xs text-muted-foreground">Hash: {l.hashHex.slice(0,10)}�{l.hashHex.slice(-8)}</div>
-                          </div>
-                          <div className="text-right flex items-center gap-3">
-                            <span className={l.status === 'Claimed' ? 'text-green-600 text-sm' : (l.status === 'Expired' ? 'text-red-600 text-sm' : 'text-amber-600 text-sm')}>{l.status}</span>
-                            <Button
-                              variant="destructive"
-                              disabled={l.status !== 'Active'}
-                              className="rounded-xl"
-                              onClick={async () => {
-                                const hex = l.hashHex.startsWith('0x') ? l.hashHex.slice(2) : l.hashHex;
-                                const bytes = new Uint8Array(hex.match(/.{1,2}/g).map((h: string) => parseInt(h, 16)));
-                                const payload = l.isFA ? getCancelLinkFungibleAssetPayload(bytes) : getCancelLinkCoinPayload(bytes, tokens.APT.type);
-                                await executeTransaction(payload, { successMessage: 'Link cancelled', errorMessage: 'Failed to cancel link' });
-                                loadMyLinks();
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
               </Card>
             </TabsContent>
           </Tabs>

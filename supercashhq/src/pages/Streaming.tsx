@@ -15,6 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
 const Streaming = () => {
   const [recipient, setRecipient] = useState("");
@@ -25,6 +27,9 @@ const Streaming = () => {
   const [totalStreamed, setTotalStreamed] = useState(0);
   const [streamStartTime, setStreamStartTime] = useState<number | null>(null);
   const [shareLink, setShareLink] = useState("");
+
+  const { account, connected } = useWallet();
+  const incomingStreams: { from: string; rate: string; status: string }[] = [];
 
   // Real-time streaming counter
   useEffect(() => {
@@ -104,7 +109,14 @@ const Streaming = () => {
             </p>
           </div>
 
-          <Card className="p-6 space-y-6 rounded-2xl border-2">
+          <Tabs defaultValue="create" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 rounded-xl p-1 bg-muted">
+              <TabsTrigger value="create" className="rounded-lg">Create Stream</TabsTrigger>
+              <TabsTrigger value="incoming" className="rounded-lg">Incoming</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="create" className="space-y-6">
+              <Card className="p-6 space-y-6 rounded-2xl border-2">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
                 <Radio className="w-5 h-5" />
@@ -312,6 +324,50 @@ const Streaming = () => {
             )}
           </div>
 
+            </TabsContent>
+
+            <TabsContent value="incoming" className="space-y-6">
+              <Card className="p-6 space-y-6 rounded-2xl border-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
+                    <Radio className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-2xl font-bold">Incoming Streams</h2>
+                </div>
+
+                {(!connected || !account) ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground mb-2">Please connect your wallet to view incoming streams</p>
+                  </div>
+                ) : (
+                  <>
+                    {incomingStreams.length === 0 ? (
+                      <Card className="p-8 rounded-2xl border-2 text-center">
+                        <p className="text-muted-foreground">No incoming streams</p>
+                      </Card>
+                    ) : (
+                      <div className="space-y-3">
+                        {incomingStreams.map((s, idx) => (
+                          <Card key={idx} className="p-4 rounded-xl border">
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="text-sm text-muted-foreground">From</span>
+                                <span className="font-mono text-sm">{s.from}</span>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold">{s.rate}</div>
+                                <div className="text-xs text-muted-foreground">{s.status}</div>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </Card>
+            </TabsContent>
+          </Tabs>
           {/* Use Cases */}
           <div className="grid md:grid-cols-3 gap-4">
             <Card className="p-4 rounded-xl border-2 text-center">
