@@ -13,6 +13,10 @@ import {
   ExternalLink,
   RefreshCw,
   DollarSign,
+  AlertTriangle,
+  TrendingUp,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import BottomNav from "@/components/BottomNav";
@@ -26,6 +30,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAptosWallet } from "@/hooks/useAptosWallet";
 import { streamingClient, StreamInfo } from "@/lib/streaming-client";
 
@@ -33,6 +45,18 @@ interface StreamWithDetails {
   address: string;
   info: StreamInfo;
   withdrawable: bigint;
+}
+
+type StreamHealth = "healthy" | "warning" | "critical" | "depleted" | "expired";
+
+interface StreamHealthInfo {
+  status: StreamHealth;
+  daysRemaining: number;
+  hoursRemaining: number;
+  color: string;
+  bgColor: string;
+  icon: string;
+  message: string;
 }
 
 const Streaming = () => {
@@ -53,6 +77,115 @@ const Streaming = () => {
   const [shareLink, setShareLink] = useState("");
   const [lastCreatedStream, setLastCreatedStream] = useState<string>("");
 
+  // Top-up modal
+  const [topUpModalOpen, setTopUpModalOpen] = useState(false);
+  const [selectedStream, setSelectedStream] = useState<StreamWithDetails | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [isToppingUp, setIsToppingUp] = useState(false);
+
+  // Helper: Calculate stream health
+  const getStreamHealth = (stream: StreamWithDetails): StreamHealthInfo => {
+    const now = Math.floor(Date.now() / 1000);
+    const balance = Number(stream.info.balance); // in micro-USDC (6 decimals)
+    const ratePerSecond = Number(stream.info.ratePerSecond) / 1_000_000; // Remove only precision (6), keep micro-USDC
+
+    // Check if expired by time
+    if (stream.info.endTime > 0 && now > stream.info.endTime) {
+      return {
+        status: "expired",
+        daysRemaining: 0,
+        hoursRemaining: 0,
+        color: "text-gray-500",
+        bgColor: "bg-gray-500",
+        icon: "⏰",
+        message: "Stream expired",
+      };
+    }
+
+    // Check if depleted
+    if (balance === 0 || !stream.info.isActive) {
+      return {
+        status: "depleted",
+        daysRemaining: 0,
+        hoursRemaining: 0,
+        color: "text-red-600",
+        bgColor: "bg-red-500",
+        icon: "🔴",
+        message: "Stream depleted - needs top-up",
+      };
+    }
+
+    // Calculate time remaining based on balance and rate (both in micro-USDC)
+    const secondsRemaining = balance / ratePerSecond;
+    const hoursRemaining = secondsRemaining / 3600;
+    const daysRemaining = hoursRemaining / 24;
+
+    // Health status based on days remaining
+    if (daysRemaining > 30) {
+      return {
+        status: "healthy",
+        daysRemaining,
+        hoursRemaining,
+        color: "text-green-600",
+        bgColor: "bg-green-500",
+        icon: "🟢",
+        message: `~${Math.floor(daysRemaining)} days remaining`,
+      };
+    } else if (daysRemaining > 7) {
+      return {
+        status: "warning",
+        daysRemaining,
+        hoursRemaining,
+        color: "text-yellow-600",
+        bgColor: "bg-yellow-500",
+        icon: "🟡",
+        message: `~${Math.floor(daysRemaining)} days remaining`,
+      };
+    } else if (daysRemaining > 1) {
+      return {
+        status: "critical",
+        daysRemaining,
+        hoursRemaining,
+        color: "text-orange-600",
+        bgColor: "bg-orange-500",
+        icon: "🟠",
+        message: `Only ${Math.floor(daysRemaining)} days left!`,
+      };
+    } else {
+      return {
+        status: "critical",
+        daysRemaining,
+        hoursRemaining,
+        color: "text-red-600",
+        bgColor: "bg-red-500",
+        icon: "🔴",
+        message: `Only ${Math.floor(hoursRemaining)} hours left!`,
+      };
+    }
+  };
+
+  // Helper: Calculate time extension from top-up amount
+  const calculateTimeExtension = (amount: number, stream: StreamWithDetails) => {
+    const ratePerSecond = Number(stream.info.ratePerSecond) / 1_000_000; // Remove only precision (6), keep micro-USDC
+    const amountInMicroUSDC = amount * 1_000_000; // Convert USDC to micro-USDC
+    const secondsExtension = amountInMicroUSDC / ratePerSecond;
+    const hoursExtension = secondsExtension / 3600;
+    const daysExtension = hoursExtension / 24;
+
+    if (daysExtension >= 1) {
+      return `~${Math.floor(daysExtension)} days`;
+    } else {
+      return `~${Math.floor(hoursExtension)} hours`;
+    }
+  };
+
+  // Helper: Get monthly rate from stream
+  const getMonthlyRate = (stream: StreamWithDetails) => {
+    const ratePerSecond = Number(stream.info.ratePerSecond) / 1_000_000_000_000; // Remove precision (6) + USDC decimals (6)
+    const monthlyRate = ratePerSecond * 30 * 24 * 60 * 60; // 30 days in seconds
+    return monthlyRate.toFixed(2);
+  };
+
   // Initialize sender registry
   const initializeSender = async () => {
     if (!connected || !address) return false;
@@ -63,7 +196,7 @@ const Streaming = () => {
       return true;
     } catch (error: any) {
       if (error.message?.includes("EREGISTRY_ALREADY_EXISTS")) {
-        return true; // Already initialized, that's fine
+        return true;
       }
       console.error("Error initializing sender:", error);
       throw error;
@@ -86,7 +219,6 @@ const Streaming = () => {
         return;
       }
 
-      // Fetch details for each stream
       const streamDetails: StreamWithDetails[] = [];
       for (const streamAddr of streamAddresses) {
         const info = await streamingClient.getStreamInfo(streamAddr);
@@ -101,7 +233,6 @@ const Streaming = () => {
         }
       }
 
-      // Sort: active streams first
       streamDetails.sort((a, b) => {
         if (a.info.isActive && !b.info.isActive) return -1;
         if (!a.info.isActive && b.info.isActive) return 1;
@@ -171,17 +302,14 @@ const Streaming = () => {
     setIsCreating(true);
 
     try {
-      // Step 1: Initialize sender if needed
       toast.info("Initializing sender registry...");
       const initialized = await initializeSender();
       if (!initialized) {
         throw new Error("Failed to initialize sender");
       }
 
-      // Step 2: Get stream address
       const streamAddr = await streamingClient.getStreamAddress(address, recipient);
 
-      // Step 3: Check if stream already exists
       const existingInfo = await streamingClient.getStreamInfo(streamAddr);
       if (existingInfo && existingInfo.isActive) {
         toast.error("Active stream already exists to this recipient");
@@ -189,7 +317,6 @@ const Streaming = () => {
         return;
       }
 
-      // Step 4: Create stream transaction
       toast.info("Creating payment stream...");
       const txPayload = streamingClient.buildCreateStreamTransaction(
         recipient,
@@ -202,12 +329,10 @@ const Streaming = () => {
 
       toast.success("Stream created successfully!");
 
-      // Generate share link
       const link = `${window.location.origin}/claim-stream`;
       setShareLink(link);
       setLastCreatedStream(streamAddr);
 
-      // Show explorer link
       const explorerUrl = streamingClient.getExplorerUrl(txHash);
       toast.success(
         <div className="flex items-center gap-2">
@@ -222,10 +347,8 @@ const Streaming = () => {
         }
       );
 
-      // Reload streams
       await loadMyStreams();
 
-      // Reset form
       setRecipient("");
       setMonthlyAmount("");
     } catch (error: any) {
@@ -268,7 +391,6 @@ const Streaming = () => {
         }
       );
 
-      // Reload streams
       await loadMyStreams();
     } catch (error: any) {
       console.error("Error cancelling stream:", error);
@@ -280,23 +402,72 @@ const Streaming = () => {
     }
   };
 
-  // Top up a stream
-  const topUpStream = async (streamAddress: string, amount: number) => {
-    if (!connected) return;
+  // Open top-up modal
+  const openTopUpModal = (stream: StreamWithDetails) => {
+    setSelectedStream(stream);
+    setTopUpAmount("");
+    setTopUpModalOpen(true);
+  };
+
+  // Handle top-up
+  const handleTopUp = async () => {
+    if (!selectedStream || !topUpAmount) return;
+
+    const amount = parseFloat(topUpAmount);
+    if (amount <= 0 || isNaN(amount)) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+
+    setIsToppingUp(true);
 
     try {
       toast.info("Topping up stream...");
-      const txPayload = streamingClient.buildTopUpTransaction(streamAddress, amount);
-      await signAndSubmitTransaction(txPayload);
+      const txPayload = streamingClient.buildTopUpTransaction(
+        selectedStream.address,
+        amount
+      );
+      const response = await signAndSubmitTransaction(txPayload);
 
       toast.success(`Stream topped up with ${amount} USDC!`);
 
-      // Reload streams
+      const explorerUrl = streamingClient.getExplorerUrl(response.hash);
+      toast.success(
+        <div className="flex items-center gap-2">
+          <span>View on Explorer</span>
+          <ExternalLink className="w-3 h-3" />
+        </div>,
+        {
+          action: {
+            label: "Open",
+            onClick: () => window.open(explorerUrl, "_blank"),
+          },
+        }
+      );
+
       await loadMyStreams();
+      setTopUpModalOpen(false);
+      setTopUpAmount("");
     } catch (error: any) {
       console.error("Error topping up stream:", error);
-      toast.error("Failed to top up stream");
+      if (error.message?.includes("INSUFFICIENT_BALANCE")) {
+        toast.error(`Insufficient USDC balance. You need ${amount} USDC`);
+      } else if (error.message?.includes("User rejected")) {
+        toast.error("Transaction cancelled");
+      } else {
+        toast.error("Failed to top up stream");
+      }
+    } finally {
+      setIsToppingUp(false);
     }
+  };
+
+  // Quick top-up amounts
+  const quickTopUp = (months: number) => {
+    if (!selectedStream) return;
+    const monthlyRate = parseFloat(getMonthlyRate(selectedStream));
+    const amount = (monthlyRate * months).toFixed(2);
+    setTopUpAmount(amount);
   };
 
   // Copy share link
@@ -352,7 +523,7 @@ const Streaming = () => {
                 Create Stream
               </TabsTrigger>
               <TabsTrigger value="manage" className="rounded-lg">
-                My Streams
+                My Streams ({myStreams.length})
               </TabsTrigger>
             </TabsList>
 
@@ -529,98 +700,173 @@ const Streaming = () => {
 
                 {connected && !loadingStreams && myStreams.length > 0 && (
                   <div className="space-y-4">
-                    {myStreams.map((stream) => (
-                      <Card
-                        key={stream.address}
-                        className="p-4 rounded-xl border-2 hover:border-primary/50 transition-colors"
-                      >
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`w-3 h-3 rounded-full ${
-                                  stream.info.isActive
-                                    ? "bg-green-500 animate-pulse"
-                                    : "bg-gray-400"
-                                }`}
-                              />
-                              <span className="font-bold">
-                                {stream.info.isActive ? "Active" : "Inactive"}
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm text-muted-foreground">Balance</p>
-                              <p className="font-bold">
-                                {streamingClient.formatUSDC(stream.info.balance)} USDC
-                              </p>
-                            </div>
-                          </div>
+                    {myStreams.map((stream) => {
+                      const health = getStreamHealth(stream);
+                      const monthlyRate = getMonthlyRate(stream);
 
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div className="p-2 bg-background rounded-lg border">
-                              <p className="text-muted-foreground text-xs mb-1">To</p>
-                              <p className="font-mono text-xs font-bold break-all">
-                                {stream.info.recipient.slice(0, 10)}...
-                                {stream.info.recipient.slice(-8)}
-                              </p>
+                      return (
+                        <Card
+                          key={stream.address}
+                          className={`p-4 rounded-xl border-2 transition-all ${
+                            health.status === "critical" || health.status === "depleted"
+                              ? "border-red-300 bg-red-50/50 dark:bg-red-950/20"
+                              : health.status === "warning"
+                              ? "border-yellow-300 bg-yellow-50/50 dark:bg-yellow-950/20"
+                              : "hover:border-primary/50"
+                          }`}
+                        >
+                          <div className="space-y-4">
+                            {/* Header with Status */}
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-3 h-3 rounded-full ${health.bgColor} ${
+                                  stream.info.isActive ? "animate-pulse" : ""
+                                }`} />
+                                <div>
+                                  <p className="font-bold">
+                                    {stream.info.isActive ? "Active" : "Inactive"}
+                                  </p>
+                                  <p className={`text-xs ${health.color} font-medium`}>
+                                    {health.icon} {health.message}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm text-muted-foreground">Balance</p>
+                                <p className="font-bold text-lg">
+                                  {streamingClient.formatUSDC(stream.info.balance)} USDC
+                                </p>
+                              </div>
                             </div>
-                            <div className="p-2 bg-background rounded-lg border">
-                              <p className="text-muted-foreground text-xs mb-1">
-                                Rate/Second
-                              </p>
-                              <p className="font-bold text-xs">
-                                {(Number(stream.info.ratePerSecond) / 1_000_000_000_000).toFixed(
-                                  8
-                                )}
-                              </p>
-                            </div>
-                            <div className="p-2 bg-background rounded-lg border">
-                              <p className="text-muted-foreground text-xs mb-1">Withdrawn</p>
-                              <p className="font-bold text-xs">
-                                {streamingClient.formatUSDC(stream.info.totalWithdrawn)} USDC
-                              </p>
-                            </div>
-                            <div className="p-2 bg-background rounded-lg border">
-                              <p className="text-muted-foreground text-xs mb-1">Total</p>
-                              <p className="font-bold text-xs">
-                                {streamingClient.formatUSDC(stream.info.totalDeposited)} USDC
-                              </p>
-                            </div>
-                          </div>
 
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Started</span>
-                              <span className="font-medium">
-                                {new Date(stream.info.startTime * 1000).toLocaleDateString()}
-                              </span>
-                            </div>
-                            {stream.info.endTime > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Ends</span>
-                                <span className="font-medium">
-                                  {new Date(stream.info.endTime * 1000).toLocaleDateString()}
-                                </span>
+                            {/* Low Balance Warning */}
+                            {health.status === "critical" && stream.info.isActive && (
+                              <div className="p-3 bg-orange-100 dark:bg-orange-950/30 rounded-lg border-2 border-orange-300">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <AlertTriangle className="w-4 h-4 text-orange-600" />
+                                  <p className="text-sm font-bold text-orange-900 dark:text-orange-200">
+                                    Low Balance Warning!
+                                  </p>
+                                </div>
+                                <p className="text-xs text-orange-800 dark:text-orange-300">
+                                  Stream will deplete soon. Top up to keep payments flowing.
+                                </p>
                               </div>
                             )}
-                          </div>
 
-                          <div className="flex gap-2">
-                            {stream.info.isActive && (
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => cancelStream(stream.address)}
-                                className="flex-1 rounded-lg"
-                              >
-                                <Square className="w-4 h-4 mr-1" />
-                                Cancel
-                              </Button>
+                            {/* Depleted Warning */}
+                            {health.status === "depleted" && (
+                              <div className="p-3 bg-red-100 dark:bg-red-950/30 rounded-lg border-2 border-red-300">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                                  <p className="text-sm font-bold text-red-900 dark:text-red-200">
+                                    Stream Depleted!
+                                  </p>
+                                </div>
+                                <p className="text-xs text-red-800 dark:text-red-300">
+                                  No funds remaining. Top up now to reactivate and resume payments.
+                                </p>
+                              </div>
                             )}
+
+                            {/* Stream Stats Grid */}
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div className="p-3 bg-background rounded-lg border">
+                                <div className="flex items-center gap-1 mb-1">
+                                  <Clock className="w-3 h-3 text-muted-foreground" />
+                                  <p className="text-muted-foreground text-xs">To</p>
+                                </div>
+                                <p className="font-mono text-xs font-bold break-all">
+                                  {stream.info.recipient.slice(0, 10)}...
+                                  {stream.info.recipient.slice(-8)}
+                                </p>
+                              </div>
+                              <div className="p-3 bg-background rounded-lg border">
+                                <div className="flex items-center gap-1 mb-1">
+                                  <TrendingUp className="w-3 h-3 text-muted-foreground" />
+                                  <p className="text-muted-foreground text-xs">Rate</p>
+                                </div>
+                                <p className="font-bold text-xs">
+                                  ${monthlyRate}/month
+                                </p>
+                              </div>
+                              <div className="p-3 bg-background rounded-lg border">
+                                <p className="text-muted-foreground text-xs mb-1">Withdrawn</p>
+                                <p className="font-bold text-xs">
+                                  {streamingClient.formatUSDC(stream.info.totalWithdrawn)} USDC
+                                </p>
+                              </div>
+                              <div className="p-3 bg-background rounded-lg border">
+                                <p className="text-muted-foreground text-xs mb-1">Total Deposited</p>
+                                <p className="font-bold text-xs">
+                                  {streamingClient.formatUSDC(stream.info.totalDeposited)} USDC
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Timeline */}
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-3 h-3 text-muted-foreground" />
+                                  <span className="text-muted-foreground text-xs">Started</span>
+                                </div>
+                                <span className="font-medium text-xs">
+                                  {new Date(stream.info.startTime * 1000).toLocaleDateString()}
+                                </span>
+                              </div>
+                              {stream.info.endTime > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="w-3 h-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground text-xs">Ends</span>
+                                  </div>
+                                  <span className="font-medium text-xs">
+                                    {new Date(stream.info.endTime * 1000).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-2 pt-2">
+                              {health.status === "depleted" ? (
+                                <Button
+                                  onClick={() => openTopUpModal(stream)}
+                                  className="flex-1 rounded-lg font-semibold"
+                                  variant="default"
+                                >
+                                  <TrendingUp className="w-4 h-4 mr-1" />
+                                  Reactivate Stream
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    onClick={() => openTopUpModal(stream)}
+                                    className="flex-1 rounded-lg"
+                                    variant={health.status === "critical" ? "default" : "outline"}
+                                  >
+                                    <TrendingUp className="w-4 h-4 mr-1" />
+                                    Top Up
+                                  </Button>
+                                  {stream.info.isActive && (
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={() => cancelStream(stream.address)}
+                                      className="rounded-lg"
+                                    >
+                                      <Square className="w-4 h-4 mr-1" />
+                                      Cancel
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
               </Card>
@@ -663,6 +909,126 @@ const Streaming = () => {
           </div>
         </div>
       </div>
+
+      {/* Top-Up Modal */}
+      <Dialog open={topUpModalOpen} onOpenChange={setTopUpModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Top Up Stream</DialogTitle>
+            <DialogDescription>
+              Add more USDC to extend your payment stream
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedStream && (
+            <div className="space-y-4 py-4">
+              {/* Current Stream Info */}
+              <div className="p-4 bg-muted rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Current Balance</span>
+                  <span className="font-bold">
+                    {streamingClient.formatUSDC(selectedStream.info.balance)} USDC
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Monthly Rate</span>
+                  <span className="font-bold">${getMonthlyRate(selectedStream)}</span>
+                </div>
+                {selectedStream.info.isActive && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Time Remaining</span>
+                    <span className="font-bold text-orange-600">
+                      {getStreamHealth(selectedStream).message}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Amount Buttons */}
+              <div>
+                <label className="text-sm font-medium mb-2 block">Quick Amounts</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => quickTopUp(1)}
+                    className="rounded-lg"
+                  >
+                    1 Month
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => quickTopUp(3)}
+                    className="rounded-lg"
+                  >
+                    3 Months
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => quickTopUp(6)}
+                    className="rounded-lg"
+                  >
+                    6 Months
+                  </Button>
+                </div>
+              </div>
+
+              {/* Custom Amount Input */}
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Top-Up Amount (USDC)
+                </label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(e.target.value)}
+                  className="text-lg font-bold rounded-xl border-2"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              {/* Time Extension Preview */}
+              {topUpAmount && parseFloat(topUpAmount) > 0 && (
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="w-4 h-4 text-primary" />
+                    <span className="font-medium">
+                      This will add approximately{" "}
+                      <span className="font-bold text-primary">
+                        {calculateTimeExtension(parseFloat(topUpAmount), selectedStream)}
+                      </span>{" "}
+                      to your stream
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTopUpModalOpen(false)}
+              disabled={isToppingUp}
+              className="rounded-lg"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleTopUp}
+              disabled={!topUpAmount || parseFloat(topUpAmount) <= 0 || isToppingUp}
+              className="rounded-lg"
+            >
+              <TrendingUp className="w-4 h-4 mr-2" />
+              {isToppingUp ? "Topping Up..." : "Confirm Top-Up"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <BottomNav />
     </div>
