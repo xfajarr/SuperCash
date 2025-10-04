@@ -128,7 +128,7 @@ function generateLinkTransfer(amount: number, expiry: number, senderAddr: string
     const commitment = createCommitment(secret, amount, nonce, expiry, senderAddr);
     
     // 4. Create shareable link
-    const link = `https://supercash.app/claim?data=${encodeSecretData(secret, amount, nonce, expiry, senderAddr)}`;
+    const link = `https://supercash.money/claim?data=${encodeSecretData(secret, amount, nonce, expiry, senderAddr)}`;
     
     return { commitment, link, secret };
 }
@@ -359,7 +359,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 For questions and support:
 - GitHub Issues: [Create an issue](https://github.com/supercash/aptos-contract/issues)
 - Discord: [Join our community](https://discord.gg/supercash)
-- Email: developers@supercash.app
+- Email: developers@supercash.money
 
 ---
 

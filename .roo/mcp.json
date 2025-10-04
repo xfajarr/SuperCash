@@ -23,6 +23,13 @@
         "-y",
         "@modelcontextprotocol/server-memory"
       ]
+    },
+     "nodit": {
+      "command": "npx",
+      "args": [ "-y", "@noditlabs/nodit-mcp-server@latest"],
+      "env": {
+        "NODIT_API_KEY": "Sp~-7hXzIBAHGtB2xHu5B~8Wmwyx96uq"
+      }
     }
   }
-}
+}in

@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Radio, CheckCircle2, Wallet, ExternalLink, RefreshCw } from "lucide-react";
+import {
+  Radio,
+  CheckCircle2,
+  Wallet,
+  ExternalLink,
+  RefreshCw,
+} from "lucide-react";
 import Navigation from "@/components/Navigation";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
@@ -34,7 +40,9 @@ const ClaimStream = () => {
       console.log("Fetching streams for recipient:", address);
 
       // Get all stream addresses for this recipient
-      const streamAddresses = await streamingClient.getRecipientStreams(address);
+      const streamAddresses = await streamingClient.getRecipientStreams(
+        address
+      );
 
       console.log("Found stream addresses:", streamAddresses);
 
@@ -48,7 +56,9 @@ const ClaimStream = () => {
       const streamDetails: StreamWithDetails[] = [];
       for (const streamAddr of streamAddresses) {
         const info = await streamingClient.getStreamInfo(streamAddr);
-        const withdrawable = await streamingClient.getWithdrawableAmount(streamAddr);
+        const withdrawable = await streamingClient.getWithdrawableAmount(
+          streamAddr
+        );
 
         if (info) {
           streamDetails.push({
@@ -83,7 +93,9 @@ const ClaimStream = () => {
     try {
       const updatedStreams = await Promise.all(
         streams.map(async (stream) => {
-          const withdrawable = await streamingClient.getWithdrawableAmount(stream.address);
+          const withdrawable = await streamingClient.getWithdrawableAmount(
+            stream.address
+          );
           const info = await streamingClient.getStreamInfo(stream.address);
           return {
             ...stream,
@@ -147,7 +159,9 @@ const ClaimStream = () => {
 
     setLoading(true);
     try {
-      console.log(`Checking for stream from ${manualSenderAddress} to ${address}`);
+      console.log(
+        `Checking for stream from ${manualSenderAddress} to ${address}`
+      );
 
       // Calculate the stream address
       const streamAddress = await streamingClient.getStreamAddress(
@@ -166,7 +180,9 @@ const ClaimStream = () => {
       }
 
       // Get withdrawable amount
-      const withdrawable = await streamingClient.getWithdrawableAmount(streamAddress);
+      const withdrawable = await streamingClient.getWithdrawableAmount(
+        streamAddress
+      );
 
       // Add to streams list
       const newStream: StreamWithDetails = {
@@ -239,7 +255,10 @@ const ClaimStream = () => {
   };
 
   // Withdraw from a specific stream
-  const handleWithdraw = async (streamAddress: string, withdrawable: bigint) => {
+  const handleWithdraw = async (
+    streamAddress: string,
+    withdrawable: bigint
+  ) => {
     if (!connected || withdrawable === BigInt(0)) return;
 
     setWithdrawing(streamAddress);
@@ -253,7 +272,9 @@ const ClaimStream = () => {
       const txPayload = streamingClient.buildWithdrawTransaction(streamAddress);
       const response = await signAndSubmitTransaction(txPayload);
 
-      toast.success(`Withdrawn ${streamingClient.formatUSDC(withdrawable)} USDC!`);
+      toast.success(
+        `Withdrawn ${streamingClient.formatUSDC(withdrawable)} USDC!`
+      );
 
       // Show explorer link
       const explorerUrl = streamingClient.getExplorerUrl(response.hash);
@@ -286,7 +307,8 @@ const ClaimStream = () => {
 
   const getStreamProgress = (stream: StreamWithDetails) => {
     const total = Number(stream.info.totalDeposited);
-    const streamed = Number(stream.withdrawable) + Number(stream.info.totalWithdrawn);
+    const streamed =
+      Number(stream.withdrawable) + Number(stream.info.totalWithdrawn);
     if (total === 0) return 0;
     return (streamed / total) * 100;
   };
@@ -312,7 +334,8 @@ const ClaimStream = () => {
                 <h3 className="font-bold text-lg">Connect Wallet Required</h3>
               </div>
               <p className="text-muted-foreground">
-                Connect your wallet to view and claim your incoming payment streams
+                Connect your wallet to view and claim your incoming payment
+                streams
               </p>
             </Card>
           )}
@@ -330,18 +353,24 @@ const ClaimStream = () => {
             <Card className="p-8 rounded-2xl border-2 space-y-6">
               <div className="text-center">
                 <Radio className="w-16 h-16 mx-auto text-muted-foreground opacity-50" />
-                <h3 className="font-bold text-lg mb-2 mt-4">No Streams Found</h3>
+                <h3 className="font-bold text-lg mb-2 mt-4">
+                  No Streams Found
+                </h3>
                 <p className="text-muted-foreground">
-                  You don't have any incoming payment streams in your registry yet.
+                  You don't have any incoming payment streams in your registry
+                  yet.
                 </p>
               </div>
 
               {/* Manual Stream Finder */}
               <div className="p-4 bg-primary/10 rounded-xl border-2 border-primary text-left space-y-3">
                 <div>
-                  <p className="text-sm font-semibold mb-1">🔍 Find Stream by Sender</p>
+                  <p className="text-sm font-semibold mb-1">
+                    🔍 Find Stream by Sender
+                  </p>
                   <p className="text-xs text-muted-foreground">
-                    If someone sent you a stream before you initialized, enter their address:
+                    If someone sent you a stream before you initialized, enter
+                    their address:
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -355,8 +384,7 @@ const ClaimStream = () => {
                   <Button
                     onClick={handleCheckStreamFromSender}
                     disabled={!manualSenderAddress || loading}
-                    className="rounded-lg"
-                  >
+                    className="rounded-lg">
                     Find
                   </Button>
                 </div>
@@ -366,14 +394,14 @@ const ClaimStream = () => {
               <div className="p-4 bg-secondary rounded-xl border-2 border-border text-left space-y-2">
                 <p className="text-sm font-semibold">💡 First time here?</p>
                 <p className="text-xs text-muted-foreground">
-                  Initialize your registry so future streams will automatically appear in your list.
+                  Initialize your registry so future streams will automatically
+                  appear in your list.
                 </p>
                 <Button
                   onClick={handleInitializeRegistry}
                   disabled={initializing}
                   variant="outline"
-                  className="w-full rounded-lg mt-2"
-                >
+                  className="w-full rounded-lg mt-2">
                   {initializing ? "Initializing..." : "Initialize Registry"}
                 </Button>
               </div>
@@ -383,7 +411,10 @@ const ClaimStream = () => {
                 <p>{address}</p>
               </div>
 
-              <Button onClick={fetchRecipientStreams} variant="outline" className="w-full rounded-xl">
+              <Button
+                onClick={fetchRecipientStreams}
+                variant="outline"
+                className="w-full rounded-xl">
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Refresh Registry
               </Button>
@@ -395,16 +426,20 @@ const ClaimStream = () => {
             <>
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-bold">
-                  Active Streams ({streams.filter((s) => s.info.isActive).length})
+                  Active Streams (
+                  {streams.filter((s) => s.info.isActive).length})
                 </h3>
                 <Button
                   onClick={refreshWithdrawableAmounts}
                   disabled={refreshing}
                   variant="outline"
                   size="sm"
-                  className="rounded-lg"
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                  className="rounded-lg">
+                  <RefreshCw
+                    className={`w-4 h-4 mr-2 ${
+                      refreshing ? "animate-spin" : ""
+                    }`}
+                  />
                   Refresh
                 </Button>
               </div>
@@ -417,31 +452,38 @@ const ClaimStream = () => {
                       stream.info.isActive
                         ? "border-primary bg-primary/5"
                         : "border-border opacity-75"
-                    }`}
-                  >
+                    }`}>
                     <div className="space-y-4">
                       {/* Header */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div
                             className={`w-3 h-3 rounded-full ${
-                              stream.info.isActive ? "bg-green-500 animate-pulse" : "bg-gray-500"
+                              stream.info.isActive
+                                ? "bg-green-500 animate-pulse"
+                                : "bg-gray-500"
                             }`}
                           />
                           <span className="font-bold">
-                            {stream.info.isActive ? "Active Stream" : "Ended Stream"}
+                            {stream.info.isActive
+                              ? "Active Stream"
+                              : "Ended Stream"}
                           </span>
                         </div>
                         {stream.info.isActive && (
                           <Button
-                            onClick={() => handleWithdraw(stream.address, stream.withdrawable)}
+                            onClick={() =>
+                              handleWithdraw(
+                                stream.address,
+                                stream.withdrawable
+                              )
+                            }
                             disabled={
                               stream.withdrawable === BigInt(0) ||
                               withdrawing === stream.address
                             }
                             size="sm"
-                            className="rounded-lg"
-                          >
+                            className="rounded-lg">
                             <CheckCircle2 className="w-4 h-4 mr-2" />
                             {withdrawing === stream.address
                               ? "Withdrawing..."
@@ -466,33 +508,51 @@ const ClaimStream = () => {
                           <span>Stream Progress</span>
                           <span>{getStreamProgress(stream).toFixed(1)}%</span>
                         </div>
-                        <Progress value={getStreamProgress(stream)} className="h-2" />
+                        <Progress
+                          value={getStreamProgress(stream)}
+                          className="h-2"
+                        />
                       </div>
 
                       {/* Stream Details Grid */}
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div className="p-3 bg-background rounded-xl border">
-                          <p className="text-muted-foreground text-xs mb-1">From</p>
+                          <p className="text-muted-foreground text-xs mb-1">
+                            From
+                          </p>
                           <p className="font-mono text-xs font-bold break-all">
-                            {stream.info.sender.slice(0, 10)}...{stream.info.sender.slice(-8)}
+                            {stream.info.sender.slice(0, 10)}...
+                            {stream.info.sender.slice(-8)}
                           </p>
                         </div>
                         <div className="p-3 bg-background rounded-xl border">
-                          <p className="text-muted-foreground text-xs mb-1">Rate/Second</p>
+                          <p className="text-muted-foreground text-xs mb-1">
+                            Rate/Second
+                          </p>
                           <p className="font-bold">
-                            {(Number(stream.info.ratePerSecond) / 1_000_000).toFixed(6)}
+                            {(
+                              Number(stream.info.ratePerSecond) / 1_000_000
+                            ).toFixed(6)}
                           </p>
                         </div>
                         <div className="p-3 bg-background rounded-xl border">
-                          <p className="text-muted-foreground text-xs mb-1">Total Withdrawn</p>
+                          <p className="text-muted-foreground text-xs mb-1">
+                            Total Withdrawn
+                          </p>
                           <p className="font-bold">
-                            {streamingClient.formatUSDC(stream.info.totalWithdrawn)} USDC
+                            {streamingClient.formatUSDC(
+                              stream.info.totalWithdrawn
+                            )}{" "}
+                            USDC
                           </p>
                         </div>
                         <div className="p-3 bg-background rounded-xl border">
-                          <p className="text-muted-foreground text-xs mb-1">Remaining Balance</p>
+                          <p className="text-muted-foreground text-xs mb-1">
+                            Remaining Balance
+                          </p>
                           <p className="font-bold">
-                            {streamingClient.formatUSDC(stream.info.balance)} USDC
+                            {streamingClient.formatUSDC(stream.info.balance)}{" "}
+                            USDC
                           </p>
                         </div>
                       </div>
@@ -502,7 +562,9 @@ const ClaimStream = () => {
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Started</span>
                           <span className="font-medium">
-                            {new Date(stream.info.startTime * 1000).toLocaleString()}
+                            {new Date(
+                              stream.info.startTime * 1000
+                            ).toLocaleString()}
                           </span>
                         </div>
                         {stream.info.endTime > 0 && (
@@ -511,7 +573,9 @@ const ClaimStream = () => {
                               {stream.info.isActive ? "Ends" : "Ended"}
                             </span>
                             <span className="font-medium">
-                              {new Date(stream.info.endTime * 1000).toLocaleString()}
+                              {new Date(
+                                stream.info.endTime * 1000
+                              ).toLocaleString()}
                             </span>
                           </div>
                         )}
@@ -523,7 +587,9 @@ const ClaimStream = () => {
                           Stream Details
                         </summary>
                         <div className="mt-2 p-2 bg-secondary rounded">
-                          <p className="font-mono break-all">{stream.address}</p>
+                          <p className="font-mono break-all">
+                            {stream.address}
+                          </p>
                         </div>
                       </details>
                     </div>
@@ -537,9 +603,9 @@ const ClaimStream = () => {
           <div className="p-6 rounded-2xl bg-primary/10 border-2 border-primary">
             <h3 className="font-bold text-lg mb-2">🌊 How It Works</h3>
             <p className="text-muted-foreground">
-              Payment streams flow continuously to your wallet. The available amount grows
-              every second based on the stream rate. You can withdraw anytime - no need to
-              wait for the stream to end!
+              Payment streams flow continuously to your wallet. The available
+              amount grows every second based on the stream rate. You can
+              withdraw anytime - no need to wait for the stream to end!
             </p>
           </div>
         </div>

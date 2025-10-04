@@ -15,14 +15,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const tokens = [
-  { symbol: "APT", name: "Aptos", rate: 1 },
-  { symbol: "USDC", name: "USD Coin", rate: 12.5 },
-  { symbol: "PYUSD", name: "PayPal USD", rate: 12.5 },
-  { symbol: "USDT", name: "Tether", rate: 12.5 },
-];
+import { useTokenList } from "@/hooks/useTokenList";
 
 const Swap = () => {
+  const tokenList = useTokenList();
+  
+  // Add rates for swap functionality
+  const tokensWithRates = tokenList.map(token => ({
+    ...token,
+    rate: token.symbol === "APT" ? 1 : 12.5
+  }));
+
   const [fromToken, setFromToken] = useState("APT");
   const [toToken, setToToken] = useState("USDC");
   const [fromAmount, setFromAmount] = useState("");
@@ -39,8 +42,8 @@ const Swap = () => {
   const handleFromAmountChange = (value: string) => {
     setFromAmount(value);
     if (value) {
-      const fromRate = tokens.find(t => t.symbol === fromToken)?.rate || 1;
-      const toRate = tokens.find(t => t.symbol === toToken)?.rate || 1;
+      const fromRate = tokensWithRates.find(t => t.symbol === fromToken)?.rate || 1;
+      const toRate = tokensWithRates.find(t => t.symbol === toToken)?.rate || 1;
       const converted = (parseFloat(value) * fromRate / toRate).toFixed(2);
       setToAmount(converted);
     } else {
@@ -91,14 +94,18 @@ const Swap = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-2">
-                    {tokens.map((token) => (
+                    {tokensWithRates.map((token) => (
                       <SelectItem 
                         key={token.symbol} 
                         value={token.symbol}
                         className="rounded-lg"
                       >
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-primary" />
+                          <img
+                            src={token.icon}
+                            alt={token.symbol}
+                            className="w-5 h-5 rounded-full"
+                          />
                           <span className="font-semibold">{token.symbol}</span>
                         </div>
                       </SelectItem>
@@ -139,14 +146,18 @@ const Swap = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-2">
-                    {tokens.map((token) => (
+                    {tokensWithRates.map((token) => (
                       <SelectItem 
                         key={token.symbol} 
                         value={token.symbol}
                         className="rounded-lg"
                       >
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-primary" />
+                          <img
+                            src={token.icon}
+                            alt={token.symbol}
+                            className="w-5 h-5 rounded-full"
+                          />
                           <span className="font-semibold">{token.symbol}</span>
                         </div>
                       </SelectItem>
