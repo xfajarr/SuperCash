@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -64,8 +65,9 @@ const Streaming = () => {
 
   // Create stream form states
   const [recipient, setRecipient] = useState("");
-  const [monthlyAmount, setMonthlyAmount] = useState("");
-  const [durationMonths, setDurationMonths] = useState("3");
+  const [totalAmount, setTotalAmount] = useState("");
+  const [duration, setDuration] = useState("3");
+  const [durationUnit, setDurationUnit] = useState<"hour" | "day" | "week" | "month" | "year">("month");
   const [isCreating, setIsCreating] = useState(false);
 
   // Active streams
@@ -181,9 +183,7 @@ const Streaming = () => {
 
   // Helper: Get monthly rate from stream
   const getMonthlyRate = (stream: StreamWithDetails) => {
-    const ratePerSecond = Number(stream.info.ratePerSecond) / 1_000_000_000_000; // Remove precision (6) + USDC decimals (6)
-    const monthlyRate = ratePerSecond * 30 * 24 * 60 * 60; // 30 days in seconds
-    return monthlyRate.toFixed(2);
+    return streamingClient.formatRate(stream.info.ratePerSecond, 'month');
   };
 
   // Initialize sender registry
@@ -281,20 +281,20 @@ const Streaming = () => {
       return;
     }
 
-    if (!recipient || !monthlyAmount) {
+    if (!recipient || !totalAmount) {
       toast.error("Please fill in all fields");
       return;
     }
 
-    const amount = parseFloat(monthlyAmount);
-    const months = parseInt(durationMonths);
+    const amountValue = parseFloat(totalAmount);
+    const durationValue = parseFloat(duration);
 
-    if (amount <= 0 || isNaN(amount)) {
+    if (amountValue <= 0 || isNaN(amountValue)) {
       toast.error("Please enter a valid amount");
       return;
     }
 
-    if (months <= 0 || isNaN(months)) {
+    if (durationValue <= 0 || isNaN(durationValue)) {
       toast.error("Please enter a valid duration");
       return;
     }
@@ -320,8 +320,9 @@ const Streaming = () => {
       toast.info("Creating payment stream...");
       const txPayload = streamingClient.buildCreateStreamTransaction(
         recipient,
-        amount,
-        months
+        amountValue,
+        durationValue,
+        durationUnit
       );
 
       const response = await signAndSubmitTransaction(txPayload);
@@ -350,12 +351,12 @@ const Streaming = () => {
       await loadMyStreams();
 
       setRecipient("");
-      setMonthlyAmount("");
+      setTotalAmount("");
     } catch (error: any) {
       console.error("Error creating stream:", error);
 
       if (error.message?.includes("INSUFFICIENT_BALANCE")) {
-        toast.error(`Insufficient USDC balance. You need ${amount * months} USDC`);
+        toast.error(`Insufficient USDC balance. You need ${amountValue.toFixed(2)} USDC`);
       } else if (error.message?.includes("User rejected")) {
         toast.error("Transaction cancelled");
       } else {
@@ -478,10 +479,10 @@ const Streaming = () => {
 
   // Calculate total amount
   const calculateTotal = () => {
-    if (!monthlyAmount || !durationMonths) return "0.00";
-    const amount = parseFloat(monthlyAmount);
-    const months = parseInt(durationMonths);
-    return (amount * months).toFixed(2);
+    if (!totalAmount) return "0.00";
+    const amountValue = parseFloat(totalAmount);
+    if (isNaN(amountValue)) return "0.00";
+    return amountValue.toFixed(2);
   };
 
   // Initial load
@@ -516,6 +517,23 @@ const Streaming = () => {
               Stream USDC continuously to anyone on Aptos
             </p>
           </div>
+
+          {/* Cross-link to Claim Stream */}
+          <Card className="p-4 bg-secondary/50 border-2 border-border">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Radio className="w-4 h-4 text-primary" />
+                <p className="text-sm text-muted-foreground">
+                  💡 <strong>Receiving a stream?</strong> Go to Claim Stream to view and withdraw your incoming payments
+                </p>
+              </div>
+              <Link to="/claim-stream">
+                <Button variant="outline" size="sm" className="rounded-lg whitespace-nowrap">
+                  Claim Stream →
+                </Button>
+              </Link>
+            </div>
+          </Card>
 
           <Tabs defaultValue="create" className="w-full">
             <TabsList className="grid w-full grid-cols-2 rounded-xl p-1 bg-muted">
@@ -565,13 +583,13 @@ const Streaming = () => {
 
                   <div>
                     <label className="text-sm font-medium mb-2 block">
-                      Monthly Amount (USDC)
+                      Total Amount (USDC)
                     </label>
                     <Input
                       type="number"
                       placeholder="0.00"
-                      value={monthlyAmount}
-                      onChange={(e) => setMonthlyAmount(e.target.value)}
+                      value={totalAmount}
+                      onChange={(e) => setTotalAmount(e.target.value)}
                       className="text-xl font-bold rounded-xl border-2"
                       disabled={!connected || isCreating}
                       min="0"
@@ -581,32 +599,68 @@ const Streaming = () => {
 
                   <div>
                     <label className="text-sm font-medium mb-2 block">
-                      Duration (Months)
+                      Duration
                     </label>
-                    <Select
-                      value={durationMonths}
-                      onValueChange={setDurationMonths}
-                      disabled={!connected || isCreating}
-                    >
-                      <SelectTrigger className="rounded-xl border-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-xl border-2">
-                        <SelectItem value="1" className="rounded-lg">
-                          1 Month
-                        </SelectItem>
-                        <SelectItem value="3" className="rounded-lg">
-                          3 Months
-                        </SelectItem>
-                        <SelectItem value="6" className="rounded-lg">
-                          6 Months
-                        </SelectItem>
-                        <SelectItem value="12" className="rounded-lg">
-                          12 Months
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                        className="text-xl font-bold rounded-xl border-2"
+                        disabled={!connected || isCreating}
+                        min="0"
+                        step="1"
+                      />
+                      <Select
+                        value={durationUnit}
+                        onValueChange={(value) => setDurationUnit(value as any)}
+                        disabled={!connected || isCreating}
+                      >
+                        <SelectTrigger className="rounded-xl border-2 w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl border-2">
+                          <SelectItem value="hour" className="rounded-lg">
+                            Hours
+                          </SelectItem>
+                          <SelectItem value="day" className="rounded-lg">
+                            Days
+                          </SelectItem>
+                          <SelectItem value="week" className="rounded-lg">
+                            Weeks
+                          </SelectItem>
+                          <SelectItem value="month" className="rounded-lg">
+                            Months
+                          </SelectItem>
+                          <SelectItem value="year" className="rounded-lg">
+                            Years
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
+
+                  {/* Preview Rate */}
+                  {totalAmount && duration && (
+                    <div className="p-4 bg-primary/10 rounded-xl border-2 border-primary">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-muted-foreground">
+                            Rate per second:
+                          </span>
+                          <span className="text-xs font-mono text-muted-foreground">
+                            {(parseFloat(totalAmount) / (parseFloat(duration) * (
+                              durationUnit === 'hour' ? 3600 :
+                              durationUnit === 'day' ? 86400 :
+                              durationUnit === 'week' ? 604800 :
+                              durationUnit === 'month' ? 2592000 : 31536000
+                            ))).toFixed(9)} USDC/sec
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <Button
                     onClick={createStream}

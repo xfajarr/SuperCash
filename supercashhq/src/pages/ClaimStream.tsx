@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -31,20 +32,21 @@ const ClaimStream = () => {
   const [initializing, setInitializing] = useState(false);
   const [manualSenderAddress, setManualSenderAddress] = useState("");
 
-  // Fetch all streams for the connected recipient
+  // Fetch all streams for the connected recipient using hybrid approach
   const fetchRecipientStreams = async () => {
     if (!connected || !address) return;
 
     setLoading(true);
     try {
-      console.log("Fetching streams for recipient:", address);
+      console.log("Fetching streams for recipient (hybrid approach):", address);
 
-      // Get all stream addresses for this recipient
-      const streamAddresses = await streamingClient.getRecipientStreams(
+      // Use hybrid approach: combines registry + event-based discovery
+      // This finds ALL streams regardless of registry initialization order
+      const streamAddresses = await streamingClient.getRecipientStreamsHybrid(
         address
       );
 
-      console.log("Found stream addresses:", streamAddresses);
+      console.log("Found stream addresses (hybrid):", streamAddresses);
 
       if (streamAddresses.length === 0) {
         console.log("No streams found for this recipient");
@@ -113,13 +115,64 @@ const ClaimStream = () => {
     }
   };
 
-  // Initial fetch when wallet connects
+  // Auto-initialize registry and fetch streams when wallet connects (parallel, non-blocking)
   useEffect(() => {
-    if (connected && address) {
-      fetchRecipientStreams();
-    } else {
-      setStreams([]);
-    }
+    const initializeAndFetch = async () => {
+      if (connected && address) {
+        console.log("🚀 Wallet connected, starting parallel operations...");
+
+        // PARALLEL EXECUTION: Run both simultaneously without blocking
+        const initPromise = (async () => {
+          try {
+            // PRE-CHECK: Does registry already exist? (no signature needed)
+            console.log("🔍 Checking if registry exists...");
+            const registryExists = await streamingClient.checkIfRecipientRegistryExists(address);
+
+            if (registryExists) {
+              console.log("✅ Registry already exists, skipping initialization");
+              return false; // Already initialized
+            }
+
+            // Registry doesn't exist - NOW ask for signature
+            console.log("🔧 Registry not found, requesting initialization...");
+            const txPayload = streamingClient.buildInitRecipientTransaction(address);
+            await signAndSubmitTransaction(txPayload);
+
+            // Cache the successful initialization
+            localStorage.setItem(`registry_init_${address}`, 'true');
+
+            console.log("✅ Registry auto-initialized successfully");
+            toast.success("Registry initialized! Future streams will auto-appear.", {
+              duration: 3000,
+            });
+            return true;
+          } catch (error: any) {
+            // Handle errors gracefully
+            if (error.message?.includes("EREGISTRY_ALREADY_EXISTS")) {
+              console.log("ℹ️ Registry already initialized (race condition)");
+              localStorage.setItem(`registry_init_${address}`, 'true');
+            } else if (error.message?.includes("User rejected")) {
+              console.log("⏭️ User rejected initialization - streams will still be discovered via events");
+            } else {
+              console.warn("⚠️ Could not auto-initialize registry:", error.message);
+            }
+            return false;
+          }
+        })();
+
+        // Fetch streams immediately (doesn't wait for init to complete)
+        const fetchPromise = fetchRecipientStreams();
+
+        // Wait for both to complete (but they run in parallel)
+        await Promise.allSettled([initPromise, fetchPromise]);
+
+        console.log("✨ Initialization and fetch completed");
+      } else {
+        setStreams([]);
+      }
+    };
+
+    initializeAndFetch();
   }, [connected, address]);
 
   // Poll for updates every 5 seconds
@@ -133,16 +186,30 @@ const ClaimStream = () => {
     return () => clearInterval(interval);
   }, [connected, streams.length]);
 
-  // Initialize recipient registry if needed
+  // Initialize recipient registry if needed (with pre-check to avoid unnecessary signatures)
   const initializeRecipient = async () => {
     if (!connected || !address) return false;
 
     try {
+      // Pre-check: avoid asking for signature if already initialized
+      const registryExists = await streamingClient.checkIfRecipientRegistryExists(address);
+
+      if (registryExists) {
+        console.log("✅ Registry already exists (initializeRecipient)");
+        return true;
+      }
+
+      // Not initialized - ask for signature
       const txPayload = streamingClient.buildInitRecipientTransaction(address);
       await signAndSubmitTransaction(txPayload);
+
+      // Cache successful initialization
+      localStorage.setItem(`registry_init_${address}`, 'true');
+
       return true;
     } catch (error: any) {
       if (error.message?.includes("EREGISTRY_ALREADY_EXISTS")) {
+        localStorage.setItem(`registry_init_${address}`, 'true');
         return true;
       }
       console.error("Error initializing recipient:", error);
@@ -264,8 +331,13 @@ const ClaimStream = () => {
     setWithdrawing(streamAddress);
 
     try {
-      // Initialize recipient if needed
-      await initializeRecipient();
+      // Try to ensure registry is initialized (in case auto-init was rejected)
+      // This is a safety net - auto-init should have already handled this
+      try {
+        await initializeRecipient();
+      } catch (error: any) {
+        // Ignore errors - already initialized or user rejected on page load
+      }
 
       // Build and submit withdrawal transaction
       toast.info("Processing withdrawal...");
@@ -326,6 +398,23 @@ const ClaimStream = () => {
             </p>
           </div>
 
+          {/* Cross-link to Streaming */}
+          <Card className="p-4 bg-secondary/50 border-2 border-border">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Radio className="w-4 h-4 text-primary" />
+                <p className="text-sm text-muted-foreground">
+                  💡 <strong>Want to send a stream?</strong> Go to Streaming to create payment streams for others
+                </p>
+              </div>
+              <Link to="/streaming">
+                <Button variant="outline" size="sm" className="rounded-lg whitespace-nowrap">
+                  Streaming →
+                </Button>
+              </Link>
+            </div>
+          </Card>
+
           {/* Wallet Connection Prompt */}
           {!connected && (
             <Card className="p-6 rounded-2xl border-2 border-primary bg-primary/5">
@@ -357,20 +446,29 @@ const ClaimStream = () => {
                   No Streams Found
                 </h3>
                 <p className="text-muted-foreground">
-                  You don't have any incoming payment streams in your registry
-                  yet.
+                  You don't have any incoming payment streams yet.
                 </p>
+                <div className="mt-3 p-3 bg-secondary/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">
+                    ✅ Searched blockchain events (all streams)
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    ✅ Searched your registry (initialized streams)
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    💡 Check console for discovery details
+                  </p>
+                </div>
               </div>
 
-              {/* Manual Stream Finder */}
+              {/* Manual Stream Finder - Layer 3 fallback */}
               <div className="p-4 bg-primary/10 rounded-xl border-2 border-primary text-left space-y-3">
                 <div>
                   <p className="text-sm font-semibold mb-1">
-                    🔍 Find Stream by Sender
+                    🔍 Manual Stream Finder (Layer 3 Fallback)
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    If someone sent you a stream before you initialized, enter
-                    their address:
+                    If you're certain a stream exists, enter the sender's address:
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -390,22 +488,6 @@ const ClaimStream = () => {
                 </div>
               </div>
 
-              {/* Initialize Registry Info */}
-              <div className="p-4 bg-secondary rounded-xl border-2 border-border text-left space-y-2">
-                <p className="text-sm font-semibold">💡 First time here?</p>
-                <p className="text-xs text-muted-foreground">
-                  Initialize your registry so future streams will automatically
-                  appear in your list.
-                </p>
-                <Button
-                  onClick={handleInitializeRegistry}
-                  disabled={initializing}
-                  variant="outline"
-                  className="w-full rounded-lg mt-2">
-                  {initializing ? "Initializing..." : "Initialize Registry"}
-                </Button>
-              </div>
-
               <div className="p-3 bg-secondary rounded-lg text-xs font-mono break-all text-center">
                 <p className="text-muted-foreground mb-1">Your address:</p>
                 <p>{address}</p>
@@ -416,7 +498,7 @@ const ClaimStream = () => {
                 variant="outline"
                 className="w-full rounded-xl">
                 <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh Registry
+                Refresh Discovery
               </Button>
             </Card>
           )}
@@ -530,9 +612,7 @@ const ClaimStream = () => {
                             Rate/Second
                           </p>
                           <p className="font-bold">
-                            {(
-                              Number(stream.info.ratePerSecond) / 1_000_000
-                            ).toFixed(6)}
+                            {streamingClient.formatRate(stream.info.ratePerSecond, 'second')} USDC
                           </p>
                         </div>
                         <div className="p-3 bg-background rounded-xl border">
