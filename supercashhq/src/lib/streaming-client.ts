@@ -353,6 +353,72 @@ export class StreamingClient {
   }
 
   /**
+   * Get all streams for a sender using event indexing (RECOMMENDED)
+   * This finds ALL streams including cancelled/depleted ones
+   * Uses Nodit GraphQL indexer to query StreamCreatedEvent events
+   */
+  async getSenderStreamsByEvents(senderAddress: string): Promise<string[]> {
+    try {
+      console.log("🔍 Querying events for sender:", senderAddress);
+
+      // Query Nodit GraphQL indexer for StreamCreatedEvent events
+      const eventType = `${MODULE_ADDRESS}::stream_basic_fa::StreamCreatedEvent`;
+
+      const response = await fetch('/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `
+            query GetSenderStreams($eventType: String!, $sender: String!) {
+              events(
+                where: {
+                  indexed_type: { _eq: $eventType }
+                  data: { _contains: { sender: $sender } }
+                }
+                order_by: { transaction_version: desc }
+              ) {
+                data
+                indexed_type
+                sequence_number
+              }
+            }
+          `,
+          variables: {
+            eventType: eventType,
+            sender: senderAddress
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`GraphQL request failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.errors) {
+        console.error("GraphQL errors:", result.errors);
+        throw new Error(result.errors[0]?.message || "GraphQL query failed");
+      }
+
+      // Extract stream addresses from events
+      const events = result.data?.events || [];
+      const streamAddresses = events
+        .map((event: any) => event.data?.stream_address)
+        .filter((addr: any) => addr != null);
+
+      console.log(`✅ Found ${streamAddresses.length} streams via events`);
+
+      return streamAddresses;
+    } catch (error) {
+      console.error("❌ Error getting sender streams by events:", error);
+      return [];
+    }
+  }
+
+  /**
    * Get all streams for a recipient using event indexing (RECOMMENDED)
    * This finds ALL streams regardless of registry initialization
    * Uses Nodit GraphQL indexer to query StreamCreatedEvent events
@@ -449,6 +515,49 @@ export class StreamingClient {
       console.error("Error debugging schema:", error);
       return null;
     }
+  }
+
+  /**
+   * Hybrid approach: Get sender streams from both registry and events
+   * This ensures we find ALL streams including cancelled/depleted ones
+   *
+   * Layer 1: Event discovery (primary - finds everything including inactive)
+   * Layer 2: Registry query (secondary - fast fallback)
+   */
+  async getSenderStreamsHybrid(senderAddress: string): Promise<string[]> {
+    const results = new Set<string>();
+
+    console.log("🔎 Starting hybrid stream discovery for sender:", senderAddress);
+
+    // Run both queries in parallel using allSettled (one failure doesn't block the other)
+    const [eventResult, registryResult] = await Promise.allSettled([
+      this.getSenderStreamsByEvents(senderAddress),
+      this.getSenderStreams(senderAddress),
+    ]);
+
+    // Layer 1: Event discovery (primary source - includes cancelled/inactive)
+    if (eventResult.status === 'fulfilled') {
+      eventResult.value.forEach(addr => results.add(addr));
+      console.log(`📡 Event discovery: ${eventResult.value.length} streams`);
+    } else {
+      console.warn("⚠️ Event discovery failed:", eventResult.reason);
+    }
+
+    // Layer 2: Registry query (secondary source - only active streams)
+    if (registryResult.status === 'fulfilled') {
+      registryResult.value.forEach(addr => results.add(addr));
+      console.log(`📋 Registry query: ${registryResult.value.length} streams`);
+    } else {
+      console.warn("⚠️ Registry query failed:", registryResult.reason);
+    }
+
+    const totalStreams = Array.from(results);
+
+    console.log(`✨ Total unique streams found: ${totalStreams.length}`);
+    console.log(`   - Event method: ${eventResult.status === 'fulfilled' ? '✅' : '❌'}`);
+    console.log(`   - Registry method: ${registryResult.status === 'fulfilled' ? '✅' : '❌'}`);
+
+    return totalStreams;
   }
 
   /**

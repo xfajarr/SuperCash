@@ -74,6 +74,7 @@ const Streaming = () => {
   const [myStreams, setMyStreams] = useState<StreamWithDetails[]>([]);
   const [loadingStreams, setLoadingStreams] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [streamFilter, setStreamFilter] = useState<"all" | "active" | "inactive">("all");
 
   // Stream share link
   const [shareLink, setShareLink] = useState("");
@@ -203,7 +204,7 @@ const Streaming = () => {
     }
   };
 
-  // Load all streams created by the user
+  // Load all streams created by the user (including cancelled/depleted)
   const loadMyStreams = async () => {
     if (!connected || !address) {
       setMyStreams([]);
@@ -212,7 +213,8 @@ const Streaming = () => {
 
     setLoadingStreams(true);
     try {
-      const streamAddresses = await streamingClient.getSenderStreams(address);
+      // Use hybrid method to find ALL streams (active + inactive/cancelled)
+      const streamAddresses = await streamingClient.getSenderStreamsHybrid(address);
 
       if (streamAddresses.length === 0) {
         setMyStreams([]);
@@ -233,6 +235,7 @@ const Streaming = () => {
         }
       }
 
+      // Sort: active first, then by start time (newest first)
       streamDetails.sort((a, b) => {
         if (a.info.isActive && !b.info.isActive) return -1;
         if (!a.info.isActive && b.info.isActive) return 1;
@@ -485,6 +488,18 @@ const Streaming = () => {
     return amountValue.toFixed(2);
   };
 
+  // Filter streams based on selected filter
+  const filteredStreams = myStreams.filter(stream => {
+    if (streamFilter === "all") return true;
+    if (streamFilter === "active") return stream.info.isActive;
+    if (streamFilter === "inactive") return !stream.info.isActive;
+    return true;
+  });
+
+  // Count streams by status
+  const activeCount = myStreams.filter(s => s.info.isActive).length;
+  const inactiveCount = myStreams.filter(s => !s.info.isActive).length;
+
   // Initial load
   useEffect(() => {
     if (connected && address) {
@@ -732,6 +747,46 @@ const Streaming = () => {
                   </Button>
                 </div>
 
+                {/* Filter Buttons */}
+                {connected && myStreams.length > 0 && (
+                  <div className="flex items-center gap-2 pb-2 border-b border-border">
+                    <span className="text-sm text-muted-foreground mr-2">Filter:</span>
+                    <Button
+                      size="sm"
+                      variant={streamFilter === "all" ? "default" : "outline"}
+                      onClick={() => setStreamFilter("all")}
+                      className="rounded-lg"
+                    >
+                      All
+                      <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-md bg-background/20">
+                        {myStreams.length}
+                      </span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={streamFilter === "active" ? "default" : "outline"}
+                      onClick={() => setStreamFilter("active")}
+                      className="rounded-lg"
+                    >
+                      Active
+                      <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-md bg-background/20">
+                        {activeCount}
+                      </span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={streamFilter === "inactive" ? "default" : "outline"}
+                      onClick={() => setStreamFilter("inactive")}
+                      className="rounded-lg"
+                    >
+                      Inactive
+                      <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-md bg-background/20">
+                        {inactiveCount}
+                      </span>
+                    </Button>
+                  </div>
+                )}
+
                 {!connected && (
                   <div className="text-center py-8">
                     <p className="text-muted-foreground mb-2">
@@ -752,9 +807,17 @@ const Streaming = () => {
                   </Card>
                 )}
 
-                {connected && !loadingStreams && myStreams.length > 0 && (
+                {connected && !loadingStreams && myStreams.length > 0 && filteredStreams.length === 0 && (
+                  <Card className="p-8 rounded-2xl border-2 text-center">
+                    <p className="text-muted-foreground">
+                      No {streamFilter} streams found
+                    </p>
+                  </Card>
+                )}
+
+                {connected && !loadingStreams && filteredStreams.length > 0 && (
                   <div className="space-y-4">
-                    {myStreams.map((stream) => {
+                    {filteredStreams.map((stream) => {
                       const health = getStreamHealth(stream);
                       const monthlyRate = getMonthlyRate(stream);
 
