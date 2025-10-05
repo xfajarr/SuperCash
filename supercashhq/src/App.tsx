@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AptosWalletAdapterProvider } from "@aptos-labs/wallet-adapter-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Home from "./pages/Home";
 import Transfer from "./pages/Transfer";
 import Swap from "./pages/Swap";
@@ -17,28 +19,38 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider defaultTheme="light" storageKey="supercash-theme">
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/transfer" element={<Transfer />} />
-            <Route path="/swap" element={<Swap />} />
-            <Route path="/receive" element={<Receive />} />
-            <Route path="/streaming" element={<Streaming />} />
-            <Route path="/claim/*" element={<Claim />} />
-            <Route path="/claim-stream/*" element={<ClaimStream />} />
-            <Route path="/cashout" element={<CashOut />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <AptosWalletAdapterProvider
+        autoConnect={false}
+        optInWallets={["Petra", "Nightly", "Pontem Wallet", "Martian"]}
+        onError={(error) => {
+          console.error("Wallet adapter error:", error);
+        }}
+      >
+        <ThemeProvider defaultTheme="light" storageKey="supercash-theme">
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/transfer" element={<Transfer />} />
+                <Route path="/swap" element={<Swap />} />
+                <Route path="/receive" element={<Receive />} />
+                <Route path="/streaming" element={<Streaming />} />
+                <Route path="/claim/*" element={<Claim />} />
+                <Route path="/claim-stream/*" element={<ClaimStream />} />
+                <Route path="/cashout" element={<CashOut />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </ThemeProvider>
+      </AptosWalletAdapterProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

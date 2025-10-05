@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Zap, Menu } from "lucide-react";
+import { Zap, Menu, Wallet, LogOut } from "lucide-react";
 import { TokenSelector } from "./TokenSelector";
 import { ThemeToggle } from "./ThemeToggle";
 import { NetworkSwitcher } from "./NetworkSwitcher";
@@ -13,13 +13,13 @@ const Navigation = () => {
   const [open, setOpen] = useState(false);
 
   const isActive = (path: string) => location.pathname === path;
-
   const navLinks = [
     { path: "/", label: "Home" },
     { path: "/swap", label: "Swap" },
     { path: "/transfer", label: "Transfer" },
     { path: "/receive", label: "Receive" },
-    { path: "/streaming", label: "Streaming" },
+    { path: "/streaming", label: "Send Stream" },
+    { path: "/claim-stream", label: "Claim Stream" },
     { path: "/cashout", label: "Cash Out" },
   ];
 
@@ -31,7 +31,9 @@ const Navigation = () => {
             {/* <div className="bg-primary text-primary-foreground p-2 rounded-xl border-2 border-foreground transition-transform group-hover:scale-105">
               <Zap className="w-6 h-6" />
             </div> */}
-            <h1 className="text-2xl font-bold">Super<span className="text-primary">Cash</span></h1>
+            <h1 className="text-2xl font-bold">
+              Super<span className="text-primary">Cash</span>
+            </h1>
           </Link>
 
           <div className="hidden md:flex items-center gap-1">
@@ -39,8 +41,7 @@ const Navigation = () => {
               <Link key={link.path} to={link.path}>
                 <Button
                   variant={isActive(link.path) ? "default" : "ghost"}
-                  className="rounded-full"
-                >
+                  className="rounded-full">
                   {link.label}
                 </Button>
               </Link>
@@ -61,18 +62,23 @@ const Navigation = () => {
             <ThemeToggle />
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
-                <Button variant="outline" size="icon" className="rounded-full border-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="rounded-full border-2">
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-[300px] rounded-l-2xl border-l-2">
                 <div className="flex flex-col gap-4 mt-8">
                   {navLinks.map((link) => (
-                    <Link key={link.path} to={link.path} onClick={() => setOpen(false)}>
+                    <Link
+                      key={link.path}
+                      to={link.path}
+                      onClick={() => setOpen(false)}>
                       <Button
                         variant={isActive(link.path) ? "default" : "ghost"}
-                        className="w-full justify-start rounded-xl text-lg"
-                      >
+                        className="w-full justify-start rounded-xl text-lg">
                         {link.label}
                       </Button>
                     </Link>
